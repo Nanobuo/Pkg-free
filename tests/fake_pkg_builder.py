@@ -149,7 +149,8 @@ def _build_pfsc(inner: bytes) -> bytes:
 
 
 def build_pkg(path: str, content_id: str, sfo: dict, files: dict,
-              content_flags: int = 0, with_pfs: bool = True, new_crypt: bool = False) -> bytes:
+              content_flags: int = 0, with_pfs: bool = True, new_crypt: bool = False,
+              icon: bytes = b"ICONDATA") -> bytes:
     dk3 = os.urandom(32)
     ekpfs = os.urandom(32)
     seed = os.urandom(16)
@@ -168,7 +169,7 @@ def build_pkg(path: str, content_id: str, sfo: dict, files: dict,
     table_off = 0x2000
     data_off = table_off + 32 * len(entry_specs)
     sizes = {0x10: 32 + 7 * 32 + 7 * 256, 0x20: 256, 0x402: len(np_plain),
-             0x1000: len(sfo_bytes), 0x1200: 8}
+             0x1000: len(sfo_bytes), 0x1200: len(icon)}
     raws, offsets = {}, {}
     cur = data_off
     for eid, f1, f2 in entry_specs:
@@ -185,7 +186,7 @@ def build_pkg(path: str, content_id: str, sfo: dict, files: dict,
     data[0x20] = _aes_cbc_encrypt(hashlib.sha256(raws[0x20][:24] + b"\x00" * 8 + dk3).digest(), img)
     data[0x402] = _aes_cbc_encrypt(hashlib.sha256(raws[0x402] + dk3).digest(), np_plain)
     data[0x1000] = sfo_bytes
-    data[0x1200] = b"ICONDATA"
+    data[0x1200] = icon
 
     pfs_off = (cur + 0xFFFF) & ~0xFFFF
     if with_pfs:

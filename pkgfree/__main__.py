@@ -5,4 +5,4 @@ if len(sys.argv) > 1:
     sys.exit(main())
 else:
     from .gui import main
-    main()
+    sys.exit(main())

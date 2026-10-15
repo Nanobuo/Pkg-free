@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
-from .pkg import PkgError, PkgFile, PkgInfo
+from .pkg import ICON0_ID, PkgError, PkgFile, PkgInfo
 
 LogCallback = Callable[[str], None]
 # (pkg_index, pkg_count, bytes_done, bytes_total, current_file)
@@ -23,6 +23,15 @@ InstallProgress = Callable[[int, int, int, int, str], None]
 def read_info(path: str) -> PkgInfo:
     with PkgFile(path) as pkg:
         return pkg.info
+
+
+def read_icon(path: str) -> Optional[bytes]:
+    """icon0.png of a PKG, if present."""
+    try:
+        with PkgFile(path) as pkg:
+            return pkg.read_entry(ICON0_ID)
+    except (PkgError, OSError):
+        return None
 
 
 def _version_key(ver: str) -> tuple:
@@ -45,6 +54,35 @@ class TitleGroup:
         items += sorted(self.patches, key=lambda p: _version_key(p.app_ver))
         items += self.dlcs
         return items
+
+    @property
+    def title(self) -> str:
+        for info in self.ordered():
+            if info.kind != "dlc" and info.title:
+                return info.title
+        return self.title_id
+
+    @property
+    def final_version(self) -> str:
+        games = [i for i in self.ordered() if i.kind in ("game", "patch")]
+        return games[-1].app_ver if games else ""
+
+    def warnings(self, games_dir: str) -> list[str]:
+        """Problems worth showing for this title (in Italian)."""
+        out = []
+        for p in self.patches:
+            if p.is_delta_patch:
+                out.append(
+                    f"{os.path.basename(p.path)} è una patch 'delta' (incrementale): non "
+                    "contiene i file completi e il risultato potrebbe non funzionare."
+                )
+        if self.base is None and self.patches:
+            if not os.path.isfile(os.path.join(games_dir, self.title_id, "eboot.bin")):
+                out.append(
+                    f"Manca il gioco base e non esiste già una cartella {self.title_id} nella "
+                    "destinazione: l'aggiornamento verrà estratto da solo."
+                )
+        return out
 
 
 @dataclass
@@ -69,23 +107,13 @@ def build_plan(infos: list[PkgInfo], games_dir: str) -> Plan:
             group.base = info
         elif kind == "patch":
             group.patches.append(info)
-            if info.is_delta_patch:
-                plan.warnings.append(
-                    f"{name}: è una patch 'delta' (incrementale). Non contiene i file completi "
-                    "e il risultato potrebbe non funzionare."
-                )
         elif kind == "dlc":
             group.dlcs.append(info)
         else:
             raise PkgError(f"Tipo di PKG non riconosciuto ({info.category or '?'}): {name}")
 
     for tid, group in plan.groups.items():
-        if group.base is None and group.patches:
-            if not os.path.isfile(os.path.join(games_dir, tid, "eboot.bin")):
-                plan.warnings.append(
-                    f"{tid}: nessun gioco base selezionato e nessuna cartella esistente in "
-                    f"'{games_dir}'. L'aggiornamento verrà estratto da solo."
-                )
+        plan.warnings += [f"{tid}: {w}" for w in group.warnings(games_dir)]
     return plan
 
 
@@ -107,7 +135,9 @@ def install(
     log: LogCallback = print,
     progress: Optional[InstallProgress] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
+    item_status: Optional[Callable[[int, str], None]] = None,
 ) -> None:
+    """Extract every PKG of the plan. item_status(index, "start"|"done") marks each step."""
     items = plan.all_items()
     for idx, info in enumerate(items):
         dest = target_dir(info, games_dir, addons_dir, separate_update)
@@ -121,6 +151,8 @@ def install(
             if progress:
                 progress(_i, len(items), done, total, name)
 
+        if item_status:
+            item_status(idx, "start")
         with PkgFile(info.path) as pkg:
             if pkg.has_pfs:
                 pkg.extract(dest, cb, should_cancel)
@@ -128,4 +160,6 @@ def install(
                 os.makedirs(dest, exist_ok=True)
                 pkg.extract_sce_sys(dest)
                 log("    (nessun file di gioco: solo licenza/metadati)")
+        if item_status:
+            item_status(idx, "done")
     log("Completato.")

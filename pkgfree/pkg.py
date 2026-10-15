@@ -45,6 +45,7 @@ SUPERROOT_INODE = 0
 ENTRY_KEYS_ID = 0x10
 IMAGE_KEY_ID = 0x20
 PARAM_SFO_ID = 0x1000
+ICON0_ID = 0x1200
 
 CONTENT_FLAG_DELTA_PATCH = 0x41000000
 
@@ -239,6 +240,13 @@ class PkgFile:
             if e.id == entry_id:
                 return e
         return None
+
+    def read_entry(self, entry_id: int) -> Optional[bytes]:
+        """Raw data of an unencrypted header entry (e.g. ICON0_ID), or None."""
+        e = self.entry(entry_id)
+        if e is None or e.encrypted:
+            return None
+        return self._read_at(e.offset, e.size)
 
     # -- keys ----------------------------------------------------------------
     def _get_dk3(self) -> bytes:
