@@ -1,0 +1,92 @@
+import os
+import pathlib
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from fake_pkg_builder import build_pkg  # noqa: E402
+from pkgfree import installer  # noqa: E402
+from pkgfree.pkg import PkgFile  # noqa: E402
+
+BIG = os.urandom(300_000) + b"\x00" * 200_000  # spans several blocks, mixes raw/compressed
+
+
+class RoundTrip(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = self.tmp.name
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def p(self, *a):
+        return os.path.join(self.d, *a)
+
+    def test_full_install(self):
+        base_files = {"eboot.bin": b"BASE-EBOOT", "data/big.bin": BIG,
+                      "data/keep.txt": b"keep", "sce_module/libc.prx": b"prx", "empty.dat": b""}
+        np = build_pkg(self.p("base.pkg"), "UP0000-CUSA00001_00-GAMEGAMEGAME0000",
+                       {"CATEGORY": "gd", "TITLE_ID": "CUSA00001", "APP_VER": "01.00",
+                        "TITLE": "Test Game"}, base_files)
+        build_pkg(self.p("upd2.pkg"), "UP0000-CUSA00001_00-GAMEGAMEGAME0000",
+                  {"CATEGORY": "gp", "TITLE_ID": "CUSA00001", "APP_VER": "01.02"},
+                  {"eboot.bin": b"EBOOT-v102", "data/new.txt": b"new2"})
+        build_pkg(self.p("upd1.pkg"), "UP0000-CUSA00001_00-GAMEGAMEGAME0000",
+                  {"CATEGORY": "gp", "TITLE_ID": "CUSA00001", "APP_VER": "01.01"},
+                  {"eboot.bin": b"EBOOT-v101", "data/new.txt": b"new1"})
+        build_pkg(self.p("dlc.pkg"), "UP0000-CUSA00001_00-DLCPACK000000001",
+                  {"CATEGORY": "ac", "TITLE_ID": "CUSA00001"}, {"dlc/a.bin": b"dlc-a"})
+        build_pkg(self.p("unlock.pkg"), "UP0000-CUSA00001_00-UNLOCKKEY0000002",
+                  {"CATEGORY": "ac", "TITLE_ID": "CUSA00001"}, {}, with_pfs=False)
+
+        with PkgFile(self.p("base.pkg")) as pkg:
+            self.assertEqual(pkg.info.kind, "game")
+            self.assertEqual(pkg.info.title_id, "CUSA00001")
+            names = {n.path for n in pkg.list_files()}
+            self.assertIn("data/big.bin", names)
+
+        infos = [installer.read_info(self.p(n)) for n in
+                 ("dlc.pkg", "upd2.pkg", "base.pkg", "upd1.pkg", "unlock.pkg")]
+        games, addons = self.p("games"), self.p("addcont")
+        plan = installer.build_plan(infos, games)
+        self.assertEqual(plan.warnings, [])
+        installer.install(plan, games, addons, log=lambda m: None)
+
+        g = self.p("games", "CUSA00001")
+        read = lambda *a: pathlib.Path(*a).read_bytes()  # noqa: E731
+        self.assertEqual(read(g, "eboot.bin"), b"EBOOT-v102")
+        self.assertEqual(read(g, "data", "new.txt"), b"new2")
+        self.assertEqual(read(g, "data", "big.bin"), BIG)
+        self.assertEqual(read(g, "data", "keep.txt"), b"keep")
+        self.assertEqual(read(g, "empty.dat"), b"")
+        self.assertEqual(read(g, "sce_sys", "nptitle.dat"), np)
+        self.assertEqual(read(g, "sce_sys", "icon0.png"), b"ICONDATA")
+        from pkgfree.sfo import parse_sfo
+        self.assertEqual(parse_sfo(read(g, "sce_sys", "param.sfo"))["APP_VER"], "01.02")
+        self.assertEqual(read(addons, "CUSA00001", "DLCPACK000000001", "dlc", "a.bin"), b"dlc-a")
+        self.assertTrue(os.path.isfile(
+            os.path.join(addons, "CUSA00001", "UNLOCKKEY0000002", "sce_sys", "param.sfo")))
+
+    def test_new_crypt_flag(self):
+        build_pkg(self.p("n.pkg"), "UP0000-CUSA00003_00-GAMEGAMEGAME0000",
+                  {"CATEGORY": "gd", "TITLE_ID": "CUSA00003"}, {"eboot.bin": BIG},
+                  new_crypt=True)
+        with PkgFile(self.p("n.pkg")) as pkg:
+            pkg.extract(self.p("out"))
+        self.assertEqual(pathlib.Path(self.p("out", "eboot.bin")).read_bytes(), BIG)
+
+    def test_separate_update(self):
+        build_pkg(self.p("upd.pkg"), "UP0000-CUSA00002_00-GAMEGAMEGAME0000",
+                  {"CATEGORY": "gp", "TITLE_ID": "CUSA00002", "APP_VER": "01.01"},
+                  {"eboot.bin": b"E"})
+        plan = installer.build_plan([installer.read_info(self.p("upd.pkg"))], self.p("g"))
+        self.assertEqual(len(plan.warnings), 1)
+        installer.install(plan, self.p("g"), self.p("a"), separate_update=True, log=lambda m: None)
+        self.assertTrue(os.path.isfile(self.p("g", "CUSA00002-UPDATE", "eboot.bin")))
+
+
+if __name__ == "__main__":
+    unittest.main()
