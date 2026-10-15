@@ -10,6 +10,8 @@ sistemando i **DLC** nella struttura che shadPS4 si aspetta.
 > PlayStation Store sono cifrati con chiavi della console e **non** possono
 > essere estratti. Usa il programma solo con contenuti di cui possiedi i diritti.
 
+![Anteprima](docs/anteprima.png)
+
 ## Download
 
 Ogni push compila automaticamente gli eseguibili Windows con GitHub Actions

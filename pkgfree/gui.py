@@ -79,21 +79,23 @@ class App(tk.Tk):
         self.tree = ttk.Treeview(frm_list, columns=cols, show="headings", height=8)
         for col, label, width in [("file", "File", 260), ("tipo", "Tipo", 110),
                                   ("titleid", "Title ID", 90), ("versione", "Versione", 70),
-                                  ("titolo", "Titolo", 260)]:
+                                  ("titolo", "Titolo", 220)]:
             self.tree.heading(col, text=label)
             self.tree.column(col, width=width, anchor="w")
         sb = ttk.Scrollbar(frm_list, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=sb.set)
-        self.tree.pack(side="left", fill="both", expand=True, padx=(6, 0), pady=6)
-        sb.pack(side="left", fill="y", pady=6)
 
+        # Pack the buttons first so the wide list cannot squeeze them.
         btns = ttk.Frame(frm_list)
-        btns.pack(side="left", fill="y", padx=6, pady=6)
+        btns.pack(side="right", fill="y", padx=6, pady=6)
+        sb.pack(side="right", fill="y", pady=6)
+        self.tree.pack(side="left", fill="both", expand=True, padx=(6, 0), pady=6)
         self.btn_add = ttk.Button(btns, text="Aggiungi PKG…", command=self._add_files)
         self.btn_add_dir = ttk.Button(btns, text="Aggiungi cartella…", command=self._add_folder)
         self.btn_remove = ttk.Button(btns, text="Rimuovi", command=self._remove_selected)
         self.btn_clear = ttk.Button(btns, text="Svuota", command=self._clear)
         for b in (self.btn_add, self.btn_add_dir, self.btn_remove, self.btn_clear):
+            b.configure(width=18)
             b.pack(fill="x", pady=2)
 
         frm_out = ttk.LabelFrame(self, text="Destinazione")
