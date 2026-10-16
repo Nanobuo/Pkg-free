@@ -131,13 +131,33 @@ jobs:
           path: artifacts
 
       - name: Prepare release files
+        # One asset per platform/program; stable names so that
+        # /releases/latest/download/<name> links keep working.
         run: |
           mkdir release
-          (cd artifacts/PkgFree-windows && zip -r ../../release/PkgFree-windows.zip .)
-          cp artifacts/PkgFree-linux/PkgFree-x86_64.AppImage release/
-          cp artifacts/PkgFree-macos/PkgFree-macos-arm64.zip release/
+          cp artifacts/PkgFree-windows/PkgFree.exe release/PkgFree-windows-x64.exe
+          cp artifacts/PkgFree-windows/pkgfree-cli.exe release/pkgfree-cli-windows-x64.exe
+          cp artifacts/PkgFree-linux/PkgFree-x86_64.AppImage release/PkgFree-linux-x86_64.AppImage
+          cp artifacts/PkgFree-macos/PkgFree-macos-arm64.zip release/PkgFree-macos-arm64.zip
           ls -la release
 
       - uses: softprops/action-gh-release@v3
         with:
           files: release/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          body: |
+            ## Download
+
+            | Sistema | File |
+            |---|---|
+            | Windows 10/11 (x64) | `PkgFree-windows-x64.exe` (interfaccia grafica), `pkgfree-cli-windows-x64.exe` (riga di comando) |
+            | Linux (x86_64) | `PkgFree-linux-x86_64.AppImage` (grafica senza argomenti, riga di comando con argomenti) |
+            | macOS (Apple Silicon) | `PkgFree-macos-arm64.zip` (contiene `PkgFree.app`) |
+
+            ## Note
+
+            - Supporta solo PKG **fake (fPKG)**: backup dei propri giochi e homebrew. I PKG retail del PlayStation Store non si possono estrarre.
+            - **Windows:** l'eseguibile non è firmato; se compare "Windows ha protetto il PC" scegli *Ulteriori informazioni → Esegui comunque*.
+            - **Linux:** `chmod +x PkgFree-linux-x86_64.AppImage` prima di avviarlo.
+            - **macOS:** l'app non è firmata; al primo avvio consentila da *Impostazioni di Sistema → Privacy e sicurezza → Apri comunque*.

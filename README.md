@@ -17,20 +17,20 @@ sistemando i **DLC** nella struttura che shadPS4 si aspetta.
 Le versioni pubblicate si trovano nella pagina **Releases**. Ogni push compila
 anche gli eseguibili con GitHub Actions (scheda **Actions** → ultima esecuzione
 di *Build* → artefatti). Creando un tag `v*` (es. `v1.2.0`) viene pubblicata
-una release con tutti i file.
+una release con un file per ogni sistema.
 
-| Sistema | File | Contenuto |
-|---|---|---|
-| Windows 10/11 (x64) | `PkgFree-windows.zip` | `PkgFree.exe` (interfaccia grafica, ~60–80 MB perché include Qt) e `pkgfree-cli.exe` (riga di comando) |
-| Linux (x86_64) | `PkgFree-x86_64.AppImage` | interfaccia grafica e riga di comando in un unico file |
-| macOS (Apple Silicon) | `PkgFree-macos-arm64.zip` | `PkgFree.app` |
+| Sistema | File |
+|---|---|
+| Windows 10/11 (x64) | `PkgFree-windows-x64.exe` (interfaccia grafica, ~60–80 MB perché include Qt) e `pkgfree-cli-windows-x64.exe` (riga di comando) |
+| Linux (x86_64) | `PkgFree-linux-x86_64.AppImage` (interfaccia grafica e riga di comando in un unico file) |
+| macOS (Apple Silicon) | `PkgFree-macos-arm64.zip` (contiene `PkgFree.app`) |
 
 **Linux:** rendi eseguibile il file e avvialo:
 
 ```bash
-chmod +x PkgFree-x86_64.AppImage
-./PkgFree-x86_64.AppImage                       # interfaccia grafica
-./PkgFree-x86_64.AppImage install gioco.pkg patch.pkg -o ~/Giochi/PS4   # riga di comando
+chmod +x PkgFree-linux-x86_64.AppImage
+./PkgFree-linux-x86_64.AppImage                 # interfaccia grafica
+./PkgFree-linux-x86_64.AppImage install gioco.pkg patch.pkg -o ~/Giochi/PS4   # riga di comando
 ```
 
 Se l'AppImage non parte per la mancanza di FUSE, installa `libfuse2` oppure
@@ -91,6 +91,10 @@ all'avvio. Le impostazioni sono salvate in `%APPDATA%\PkgFree\config.json`
 (su Linux e macOS in `~/.config/PkgFree/config.json`).
 
 ## Uso (riga di comando)
+
+Su Windows il file della release si chiama `pkgfree-cli-windows-x64.exe` (puoi
+rinominarlo in `pkgfree-cli.exe`); su Linux e macOS si usano l'AppImage o
+`PkgFree.app/Contents/MacOS/PkgFree` con gli stessi argomenti.
 
 ```bat
 pkgfree-cli info gioco.pkg patch.pkg --files
