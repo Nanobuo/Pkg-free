@@ -42,6 +42,11 @@ PFS_FLAG_NEW_CRYPT = 0x2000000000000000
 
 SUPERROOT_INODE = 0
 
+# pfs_image.dat (the PFSC image) is the only file of the outer PFS and starts
+# right after its few metadata blocks; shadPS4 only looked at the first few MB.
+PFSC_SCAN_LIMIT = 1 << 30
+PFSC_FINE_SCAN_LIMIT = 64 << 20
+
 ENTRY_KEYS_ID = 0x10
 IMAGE_KEY_ID = 0x20
 PARAM_SFO_ID = 0x1000
@@ -368,16 +373,11 @@ class _PfsReader:
         self._size = pkg.info.pfs_image_size
 
         outer_hdr = pkg._read_at(self._base, 0x380)
-        mode, = struct.unpack_from("<H", outer_hdr, 0x1C)
-        if mode & PFS_MODE_ENCRYPTED:
-            seed = outer_hdr[0x370:0x380]
-            new_crypt = bool(pkg.info.pfs_image_flags & PFS_FLAG_NEW_CRYPT)
-            data_key, tweak_key = crypto.pfs_gen_crypto_key(pkg._get_ekpfs(), seed, new_crypt)
-            self._xts: Optional[crypto.XtsDecryptor] = crypto.XtsDecryptor(data_key, tweak_key)
-        else:
-            self._xts = None
-
-        self._pfsc = self._find_pfsc()
+        self.outer_mode, = struct.unpack_from("<H", outer_hdr, 0x1C)
+        bs, = struct.unpack_from("<i", outer_hdr, 0x20)
+        self.outer_block_size = bs if 0x1000 <= bs <= 0x100000 and bs % 0x1000 == 0 else 0x10000
+        self._xts: Optional[crypto.XtsDecryptor] = None
+        self._pfsc = self._locate(outer_hdr[0x370:0x380])
         hdr = self._read(self._pfsc, 0x30)
         self._block_size, = struct.unpack_from("<Q", hdr, 0x10)
         block_offsets, = struct.unpack_from("<Q", hdr, 0x18)
@@ -412,11 +412,68 @@ class _PfsReader:
         dec = self._xts.decrypt(enc, start // crypto.XTS_SECTOR_SIZE)
         return dec[offset - start:offset - start + size]
 
-    def _find_pfsc(self) -> int:
-        for off in range(0x20000, self._size, 0x10000):
+    def _key_candidates(self, seed: bytes) -> list[tuple[str, Optional[crypto.XtsDecryptor]]]:
+        """Ways the outer image may be protected, most likely first.
+
+        Two key derivations exist ("new crypt" hashes the EKPFS with the seed
+        first). Which one a PKG uses is signalled by a header flag, but not
+        every tool sets it consistently, so both are tried.
+        """
+        cands: list[tuple[str, Optional[crypto.XtsDecryptor]]] = []
+        if not self.outer_mode & PFS_MODE_ENCRYPTED:
+            cands.append(("in chiaro", None))
+        ekpfs = self._pkg._get_ekpfs()
+        flag = bool(self._pkg.info.pfs_image_flags & PFS_FLAG_NEW_CRYPT)
+        for new_crypt in (flag, not flag):
+            data_key, tweak_key = crypto.pfs_gen_crypto_key(ekpfs, seed, new_crypt)
+            name = "chiave 'new crypt'" if new_crypt else "chiave classica"
+            cands.append((name, crypto.XtsDecryptor(data_key, tweak_key)))
+        if self.outer_mode & PFS_MODE_ENCRYPTED:
+            cands.append(("in chiaro", None))
+        return cands
+
+    def _superroot_ok(self) -> bool:
+        """The first inode of the outer image (the superroot) must be a directory."""
+        data = self._read(self.outer_block_size, 0x20)
+        mode, nlink = struct.unpack_from("<HH", data, 0)
+        size, = struct.unpack_from("<q", data, 8)
+        return (mode & 0xF000) == 0x4000 and 0 < nlink < 0x10000 and 0 < size < (1 << 40)
+
+    def _scan_pfsc(self, step: int, limit: int) -> Optional[int]:
+        start = self.outer_block_size
+        for off in range(start, min(self._size, limit), step):
             if self._read(off, 4) == PFSC_MAGIC:
                 return off
-        raise PkgError("Immagine PFSC non trovata: PKG non supportato o danneggiato")
+        return None
+
+    def _locate(self, seed: bytes) -> int:
+        cands = self._key_candidates(seed)
+        # Prefer a key that yields a sane superroot inode, then look for the PFSC image.
+        valid = []
+        for name, xts in cands:
+            self._xts = xts
+            try:
+                if self._superroot_ok():
+                    valid.append((name, xts))
+            except PkgError:
+                pass
+        tried = []
+        for name, xts in valid or cands:
+            self._xts = xts
+            off = self._scan_pfsc(self.outer_block_size, PFSC_SCAN_LIMIT)
+            if off is None:
+                # Unusual alignment: look at every XTS sector of the first part.
+                off = self._scan_pfsc(crypto.XTS_SECTOR_SIZE, PFSC_FINE_SCAN_LIMIT)
+            if off is not None:
+                self.key_used = name
+                return off
+            tried.append(name)
+        flags = self._pkg.info.pfs_image_flags
+        raise PkgError(
+            "Immagine PFSC non trovata: PKG non supportato o danneggiato "
+            f"(mode=0x{self.outer_mode:X}, flags=0x{flags:016X}, "
+            f"blocco=0x{self.outer_block_size:X}, chiave valida: "
+            f"{', '.join(n for n, _ in valid) or 'nessuna'}; provate: {', '.join(tried)})")
 
     # -- inner image -------------------------------------------------------------
     def read_blocks(self, first: int, count: int) -> bytes:

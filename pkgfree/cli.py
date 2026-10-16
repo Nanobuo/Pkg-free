@@ -23,6 +23,17 @@ def _cmd_info(args) -> int:
             print(f"  Title ID:   {installer.title_id_of(i)}")
             print(f"  Titolo:     {i.title}")
             print(f"  Versione:   {i.app_ver or i.version}")
+            if args.debug:
+                print(f"  PFS:        offset=0x{i.pfs_image_offset:X} size=0x{i.pfs_image_size:X} "
+                      f"flags=0x{i.pfs_image_flags:016X}")
+                print(f"  Content:    type=0x{i.content_type:X} flags=0x{i.content_flags:08X}")
+                if pkg.has_pfs:
+                    try:
+                        pfs = pkg.pfs()
+                        print(f"  Decifrato:  {pfs.key_used}, PFSC a 0x{pfs._pfsc:X}, "
+                              f"mode esterno=0x{pfs.outer_mode:X}")
+                    except PkgError as ex:
+                        print(f"  ERRORE:     {ex}")
             if args.files:
                 for node in pkg.list_files():
                     print(f"    {node.path}{'/' if node.is_dir else f'  ({node.size} B)'}")
@@ -66,6 +77,8 @@ def main(argv=None) -> int:
     p_info = sub.add_parser("info", help="mostra le informazioni di uno o più PKG")
     p_info.add_argument("pkg", nargs="+")
     p_info.add_argument("--files", action="store_true", help="elenca anche i file contenuti")
+    p_info.add_argument("--debug", action="store_true",
+                        help="mostra dettagli tecnici (utili per segnalare problemi)")
     p_info.set_defaults(func=_cmd_info)
 
     p_inst = sub.add_parser("install", help="estrae e unisce gioco base, aggiornamenti e DLC")

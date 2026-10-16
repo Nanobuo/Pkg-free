@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from fake_pkg_builder import build_pkg  # noqa: E402
 from pkgfree import installer  # noqa: E402
-from pkgfree.pkg import PkgFile  # noqa: E402
+from pkgfree.pkg import PkgError, PkgFile  # noqa: E402
 
 BIG = os.urandom(300_000) + b"\x00" * 200_000  # spans several blocks, mixes raw/compressed
 
@@ -77,6 +77,37 @@ class RoundTrip(unittest.TestCase):
         with PkgFile(self.p("n.pkg")) as pkg:
             pkg.extract(self.p("out"))
         self.assertEqual(pathlib.Path(self.p("out", "eboot.bin")).read_bytes(), BIG)
+
+    def test_key_derivation_flag_mismatch(self):
+        # Real-world fPKGs do not always set the "new crypt" flag consistently.
+        cases = [
+            dict(new_crypt=True, flag_new_crypt=False),
+            dict(new_crypt=False, flag_new_crypt=True),
+            dict(new_crypt=True, flag_new_crypt=False, outer_superroot=False),
+            dict(new_crypt=False, outer_superroot=False, pfsc_offset=0x23000),
+        ]
+        for i, kw in enumerate(cases):
+            with self.subTest(**kw):
+                path = self.p(f"m{i}.pkg")
+                build_pkg(path, "UP0000-CUSA00004_00-GAMEGAMEGAME0000",
+                          {"CATEGORY": "gd", "TITLE_ID": "CUSA00004"}, {"eboot.bin": BIG}, **kw)
+                with PkgFile(path) as pkg:
+                    pkg.extract(self.p(f"o{i}"))
+                self.assertEqual(pathlib.Path(self.p(f"o{i}", "eboot.bin")).read_bytes(), BIG)
+
+    def test_wrong_key_reports_details(self):
+        path = self.p("bad.pkg")
+        build_pkg(path, "UP0000-CUSA00005_00-GAMEGAMEGAME0000",
+                  {"CATEGORY": "gd", "TITLE_ID": "CUSA00005"}, {"eboot.bin": b"x"})
+        data = bytearray(pathlib.Path(path).read_bytes())
+        with PkgFile(path) as pkg:
+            pfs = pkg.info.pfs_image_offset
+        data[pfs + 0x370] ^= 0xFF  # corrupt the seed: no key can work any more
+        pathlib.Path(path).write_bytes(data)
+        with PkgFile(path) as pkg:
+            with self.assertRaises(PkgError) as ctx:
+                pkg.extract(self.p("bad"))
+        self.assertIn("provate", str(ctx.exception))
 
     def test_separate_update(self):
         build_pkg(self.p("upd.pkg"), "UP0000-CUSA00002_00-GAMEGAMEGAME0000",

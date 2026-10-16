@@ -150,7 +150,9 @@ def _build_pfsc(inner: bytes) -> bytes:
 
 def build_pkg(path: str, content_id: str, sfo: dict, files: dict,
               content_flags: int = 0, with_pfs: bool = True, new_crypt: bool = False,
-              icon: bytes = b"ICONDATA") -> bytes:
+              icon: bytes = b"ICONDATA", flag_new_crypt=None, outer_superroot: bool = True,
+              pfsc_offset: int = 0x20000) -> bytes:
+    """flag_new_crypt: header flag value (default: same as new_crypt, like a correct PKG)."""
     dk3 = os.urandom(32)
     ekpfs = os.urandom(32)
     seed = os.urandom(16)
@@ -191,9 +193,12 @@ def build_pkg(path: str, content_id: str, sfo: dict, files: dict,
     pfs_off = (cur + 0xFFFF) & ~0xFFFF
     if with_pfs:
         pfsc = _build_pfsc(_build_inner(files))
-        outer = bytearray(0x20000) + pfsc
+        outer = bytearray(pfsc_offset) + pfsc
         outer += b"\x00" * ((-len(outer)) % 0x1000)
         struct.pack_into("<H", outer, 0x1C, 0x4 | 0x8)
+        struct.pack_into("<i", outer, 0x20, 0x10000)
+        if outer_superroot:  # inode 0 of the outer image: a directory
+            struct.pack_into("<HHIq", outer, 0x10000, 0x41ED, 3, 0, 0x10000)
         outer[0x370:0x380] = seed
         data_key, tweak_key = crypto.pfs_gen_crypto_key(ekpfs, seed, new_crypt)
         key = algorithms.AES(data_key + tweak_key)
@@ -212,7 +217,9 @@ def build_pkg(path: str, content_id: str, sfo: dict, files: dict,
     struct.pack_into(">I", buf, 0x18, table_off)
     buf[0x40:0x40 + len(content_id)] = content_id.encode()
     struct.pack_into(">II", buf, 0x74, 0x1A, content_flags)
-    pfs_flags = 0x80000000000003CC | (0x2000000000000000 if new_crypt else 0)
+    if flag_new_crypt is None:
+        flag_new_crypt = new_crypt
+    pfs_flags = 0x80000000000003CC | (0x2000000000000000 if flag_new_crypt else 0)
     struct.pack_into(">QQQ", buf, 0x408, pfs_flags, pfs_off, pfs_size)
     struct.pack_into(">Q", buf, 0x430, total)
     for i, (eid, _, _) in enumerate(entry_specs):
