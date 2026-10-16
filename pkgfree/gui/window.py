@@ -62,7 +62,15 @@ class MainWindow(FluentWindow):
             return
         existing = [g.title_id for g in plan.groups.values()
                     if g.base and os.path.isdir(os.path.join(games, g.title_id))]
-        if existing:
+        if plan.downgrades:
+            box = MessageBox("Versione più vecchia",
+                             "\n\n".join(plan.downgrades) +
+                             "\n\nVuoi davvero sovrascrivere la versione installata?", self)
+            box.yesButton.setText("Sovrascrivi")
+            box.cancelButton.setText("Annulla")
+            if not box.exec():
+                return
+        elif existing:
             box = MessageBox("Cartella già esistente",
                              "Esiste già una cartella per " + ", ".join(existing) +
                              ". I file con lo stesso nome verranno sovrascritti. Continuare?", self)

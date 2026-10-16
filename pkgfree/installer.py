@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 from .pkg import ICON0_ID, PkgError, PkgFile, PkgInfo
+from .sfo import parse_sfo
 
 LogCallback = Callable[[str], None]
 # (pkg_index, pkg_count, bytes_done, bytes_total, current_file)
@@ -36,6 +37,25 @@ def read_icon(path: str) -> Optional[bytes]:
 
 def _version_key(ver: str) -> tuple:
     return tuple(int(x) for x in re.findall(r"\d+", ver)) or (0,)
+
+
+def installed_version(games_dir: str, title_id: str) -> Optional[str]:
+    """APP_VER of the copy of title_id already in games_dir, if any.
+
+    A separate update folder (as shadPS4 uses it) wins over the base folder.
+    """
+    if not games_dir:
+        return None
+    for folder in (f"{title_id}-UPDATE", f"{title_id}-patch", title_id):
+        sfo_path = os.path.join(games_dir, folder, "sce_sys", "param.sfo")
+        try:
+            with open(sfo_path, "rb") as f:
+                ver = parse_sfo(f.read()).get("APP_VER")
+        except (OSError, ValueError):
+            continue
+        if ver:
+            return str(ver)
+    return None
 
 
 def title_id_of(info: PkgInfo) -> str:
@@ -67,9 +87,26 @@ class TitleGroup:
         games = [i for i in self.ordered() if i.kind in ("game", "patch")]
         return games[-1].app_ver if games else ""
 
+    def downgrade(self, games_dir: str) -> Optional[str]:
+        """Message when extracting would replace an installed copy with an older version."""
+        installed = installed_version(games_dir, self.title_id)
+        final = self.final_version
+        if installed and final and _version_key(final) < _version_key(installed):
+            return (f"Sul disco è già installata la versione {installed}: dopo l'estrazione il "
+                    f"gioco tornerebbe alla {final}.")
+        return None
+
     def warnings(self, games_dir: str) -> list[str]:
         """Problems worth showing for this title (in Italian)."""
         out = []
+        down = self.downgrade(games_dir)
+        if down:
+            out.append(down)
+        elif self.patches and not self.base:
+            installed = installed_version(games_dir, self.title_id)
+            if installed and _version_key(installed) == _version_key(self.final_version):
+                out.append(f"La versione {installed} è già installata: la patch verrà "
+                           "riapplicata sopra quella esistente.")
         for p in self.patches:
             if p.is_delta_patch:
                 out.append(
@@ -89,6 +126,7 @@ class TitleGroup:
 class Plan:
     groups: dict[str, TitleGroup] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    downgrades: list[str] = field(default_factory=list)
 
     def all_items(self) -> list[PkgInfo]:
         return [i for g in self.groups.values() for i in g.ordered()]
@@ -114,6 +152,9 @@ def build_plan(infos: list[PkgInfo], games_dir: str) -> Plan:
 
     for tid, group in plan.groups.items():
         plan.warnings += [f"{tid}: {w}" for w in group.warnings(games_dir)]
+        down = group.downgrade(games_dir)
+        if down:
+            plan.downgrades.append(f"{tid}: {down}")
     return plan
 
 

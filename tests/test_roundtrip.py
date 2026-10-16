@@ -1,3 +1,5 @@
+import contextlib
+import io
 import os
 import pathlib
 import sys
@@ -108,6 +110,41 @@ class RoundTrip(unittest.TestCase):
             with self.assertRaises(PkgError) as ctx:
                 pkg.extract(self.p("bad"))
         self.assertIn("provate", str(ctx.exception))
+
+    def test_installed_version_check(self):
+        cid = "UP0000-CUSA00006_00-GAMEGAMEGAME0000"
+        sfo = {"CATEGORY": "gd", "TITLE_ID": "CUSA00006", "APP_VER": "01.00"}
+        build_pkg(self.p("base.pkg"), cid, sfo, {"eboot.bin": b"v100"})
+        build_pkg(self.p("u103.pkg"), cid, dict(sfo, CATEGORY="gp", APP_VER="01.03"),
+                  {"eboot.bin": b"v103"})
+        build_pkg(self.p("u102.pkg"), cid, dict(sfo, CATEGORY="gp", APP_VER="01.02"),
+                  {"eboot.bin": b"v102"})
+        games = self.p("games")
+        quiet = dict(log=lambda m: None)
+
+        def plan(*names):
+            return installer.build_plan([installer.read_info(self.p(n)) for n in names], games)
+
+        installer.install(plan("base.pkg", "u103.pkg"), games, self.p("dlc"), **quiet)
+        self.assertEqual(installer.installed_version(games, "CUSA00006"), "01.03")
+
+        older = plan("u102.pkg")
+        self.assertEqual(len(older.downgrades), 1)
+        self.assertIn("01.03", older.downgrades[0])
+        self.assertEqual(plan("base.pkg").downgrades[0].count("01.00"), 1)
+        same = plan("u103.pkg")
+        self.assertEqual(same.downgrades, [])
+        self.assertTrue(any("già installata" in w for w in same.warnings))
+        self.assertEqual(plan("base.pkg", "u102.pkg", "u103.pkg").downgrades, [])
+
+        from pkgfree import cli
+        rc = cli.main(["install", self.p("u102.pkg"), "-o", games])
+        self.assertEqual(rc, 1)
+        self.assertEqual(pathlib.Path(games, "CUSA00006", "eboot.bin").read_bytes(), b"v103")
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = cli.main(["install", self.p("u102.pkg"), "-o", games, "--force"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(pathlib.Path(games, "CUSA00006", "eboot.bin").read_bytes(), b"v102")
 
     def test_separate_update(self):
         build_pkg(self.p("upd.pkg"), "UP0000-CUSA00002_00-GAMEGAMEGAME0000",

@@ -47,6 +47,10 @@ def _cmd_install(args) -> int:
     plan = installer.build_plan(infos, games)
     for w in plan.warnings:
         print(f"ATTENZIONE: {w}")
+    if plan.downgrades and not args.force:
+        print("ERRORE: verrebbe installata una versione più vecchia di quella presente. "
+              "Usa --force per procedere comunque.", file=sys.stderr)
+        return 1
 
     last = [0.0]
 
@@ -87,6 +91,8 @@ def main(argv=None) -> int:
     p_inst.add_argument("--addons", help="cartella DLC (predefinita: <output>/addcont)")
     p_inst.add_argument("--separate-update", action="store_true",
                         help="estrai gli aggiornamenti in <TITLE_ID>-UPDATE invece di unirli")
+    p_inst.add_argument("--force", action="store_true",
+                        help="procedi anche se sul disco c'è una versione più recente")
     p_inst.set_defaults(func=_cmd_install)
 
     args = parser.parse_args(argv)

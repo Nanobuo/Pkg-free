@@ -1,6 +1,6 @@
 # PKG Free
 
-Programma per Windows che estrae i file **PKG PS4** in una cartella pronta per
+Programma per Windows, Linux e macOS che estrae i file **PKG PS4** in una cartella pronta per
 l'emulatore [shadPS4](https://github.com/shadps4-emu/shadPS4), unendo
 **gioco base + aggiornamenti (patch)** in un'unica cartella aggiornata e
 sistemando i **DLC** nella struttura che shadPS4 si aspetta.
@@ -14,15 +14,32 @@ sistemando i **DLC** nella struttura che shadPS4 si aspetta.
 
 ## Download
 
-Ogni push compila automaticamente gli eseguibili Windows con GitHub Actions
-(scheda **Actions** → ultima esecuzione di *Build Windows* → artefatto
-`PkgFree-windows`). Creando un tag `v*` (es. `v1.0.0`) viene pubblicata anche
-una release con lo zip.
+Le versioni pubblicate si trovano nella pagina **Releases**. Ogni push compila
+anche gli eseguibili con GitHub Actions (scheda **Actions** → ultima esecuzione
+di *Build* → artefatti). Creando un tag `v*` (es. `v1.2.0`) viene pubblicata
+una release con tutti i file.
 
-Contenuto:
+| Sistema | File | Contenuto |
+|---|---|---|
+| Windows 10/11 (x64) | `PkgFree-windows.zip` | `PkgFree.exe` (interfaccia grafica, ~60–80 MB perché include Qt) e `pkgfree-cli.exe` (riga di comando) |
+| Linux (x86_64) | `PkgFree-x86_64.AppImage` | interfaccia grafica e riga di comando in un unico file |
+| macOS (Apple Silicon) | `PkgFree-macos-arm64.zip` | `PkgFree.app` |
 
-- `PkgFree.exe`: interfaccia grafica (~60–80 MB perché include Qt)
-- `pkgfree-cli.exe`: versione da riga di comando
+**Linux:** rendi eseguibile il file e avvialo:
+
+```bash
+chmod +x PkgFree-x86_64.AppImage
+./PkgFree-x86_64.AppImage                       # interfaccia grafica
+./PkgFree-x86_64.AppImage install gioco.pkg patch.pkg -o ~/Giochi/PS4   # riga di comando
+```
+
+Se l'AppImage non parte per la mancanza di FUSE, installa `libfuse2` oppure
+avvialo con `--appimage-extract-and-run`.
+
+**macOS:** l'app non è firmata, quindi al primo avvio macOS la blocca. Apri
+**Impostazioni di Sistema → Privacy e sicurezza** e premi **Apri comunque**,
+oppure da Terminale: `xattr -dr com.apple.quarantine /Applications/PkgFree.app`.
+La riga di comando è `PkgFree.app/Contents/MacOS/PkgFree install …`.
 
 ## Uso (interfaccia grafica)
 
@@ -70,7 +87,8 @@ In shadPS4:
 Opzione **Impostazioni → Unisci gli aggiornamenti al gioco** (attiva di
 default): se la disattivi, le patch vengono estratte in `CUSA12345-UPDATE`
 accanto al gioco, formato che shadPS4 riconosce e sovrappone al gioco base
-all'avvio. Le impostazioni sono salvate in `%APPDATA%\PkgFree\config.json`.
+all'avvio. Le impostazioni sono salvate in `%APPDATA%\PkgFree\config.json`
+(su Linux e macOS in `~/.config/PkgFree/config.json`).
 
 ## Uso (riga di comando)
 
@@ -89,6 +107,12 @@ pkgfree-cli install dlc.pkg -o D:\PS4\Giochi --addons C:\shadPS4\user\addcont
 - I DLC che sono solo "chiavi di sblocco" (senza dati) producono una cartella
   con il solo `sce_sys\param.sfo`: è corretto, shadPS4 li riconosce così.
 - I file esistenti nella destinazione vengono sovrascritti.
+- **Controllo della versione installata**: se nella cartella giochi c'è già il
+  gioco (anche in `CUSA12345-UPDATE`), il programma ne legge la versione
+  (`APP_VER`). Se l'estrazione lo riporterebbe a una versione più vecchia
+  (es. reinstallare il gioco base o una patch precedente sopra la 1.05) chiede
+  conferma; se la patch è la stessa già installata lo segnala nella scheda.
+  Da riga di comando un declassamento viene rifiutato senza `--force`.
 - Velocità indicativa: decine di MB/s (decifratura AES-XTS + decompressione).
 
 ## Compilare da sorgente
@@ -110,6 +134,13 @@ pyinstaller --onefile --windowed --name PkgFree --exclude-module tkinter pkgfree
 pyinstaller --onefile --console --name pkgfree-cli --exclude-module PySide6 --exclude-module qfluentwidgets pkgfree_cli.py
 ```
 
+AppImage per Linux (serve `curl`; scarica `appimagetool`):
+
+```bash
+pip install -r requirements.txt pyinstaller pillow
+packaging/linux/build_appimage.sh      # crea dist/PkgFree-x86_64.AppImage
+```
+
 Senza compilare: `python -m pkgfree` (GUI) oppure `python -m pkgfree install ...`.
 
 ## Struttura del codice
@@ -123,6 +154,8 @@ Senza compilare: `python -m pkgfree` (GUI) oppure `python -m pkgfree install ...
 | `pkgfree/gui/` | interfaccia Fluent: `extract_page.py` (schede per gioco), `progress_page.py` (avanzamento + thread di estrazione), `settings_page.py` (impostazioni, registro), `window.py`, `config.py` |
 | `pkgfree/cli.py` | riga di comando |
 | `tests/` | test con PKG sintetici generati al volo, più uno smoke test della GUI |
+| `packaging/linux/` | script e file per l'AppImage (`build_appimage.sh`, `AppRun`, `.desktop`) |
+| `assets/pkgfree.png` | icona dell'app |
 
 ## Licenza
 
