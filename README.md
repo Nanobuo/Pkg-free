@@ -17,7 +17,9 @@ sistemando i **DLC** nella struttura che shadPS4 si aspetta.
 Le versioni pubblicate si trovano nella pagina **Releases**. Ogni push compila
 anche gli eseguibili con GitHub Actions (scheda **Actions** → ultima esecuzione
 di *Build* → artefatti). Creando un tag `v*` (es. `v1.2.0`) viene pubblicata
-una release con un file per ogni sistema.
+una release con un file per ogni sistema. In alternativa, senza creare il tag a mano: **Actions → Build →
+Run workflow**, scrivendo la versione (es. `v1.2.0`) nel campo del tag; deve
+corrispondere a `__version__` in `pkgfree/__init__.py`.
 
 | Sistema | File |
 |---|---|

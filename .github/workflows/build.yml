@@ -6,6 +6,11 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Crea una release con questo tag (es. v1.2.0); vuoto = solo build"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -122,10 +127,25 @@ jobs:
           path: PkgFree-macos-arm64.zip
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    # On a pushed v* tag, or from "Run workflow" with a release_tag (the tag is
+    # then created on the commit that was built).
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     needs: [windows, linux, macos]
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.release_tag || github.ref_name }}
     steps:
+      - uses: actions/checkout@v7
+
+      - name: Check that the tag matches the program version
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' pkgfree/__init__.py)
+          echo "tag=$TAG version=$version"
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::Il tag $TAG non corrisponde alla versione $version in pkgfree/__init__.py"
+            exit 1
+          fi
+
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
@@ -143,6 +163,9 @@ jobs:
 
       - uses: softprops/action-gh-release@v3
         with:
+          tag_name: ${{ env.TAG }}
+          name: PKG Free ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
           files: release/*
           fail_on_unmatched_files: true
           generate_release_notes: true
