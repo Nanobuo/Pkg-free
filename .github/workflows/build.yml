@@ -102,8 +102,10 @@ jobs:
           pip install -r requirements.txt pyinstaller pillow
 
       - name: Run tests
+        # Native "cocoa" platform: the runner has a GUI session, and the frameless
+        # Fluent window calls Cocoa APIs that crash under Qt's "offscreen" platform.
         env:
-          QT_QPA_PLATFORM: offscreen
+          QT_QPA_PLATFORM: cocoa
         run: python -m unittest discover -s tests -v
 
       - name: Build app
