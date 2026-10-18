@@ -18,6 +18,7 @@ class Config(QConfig):
     addonsDir = ConfigItem("Paths", "AddonsDir", "")
     lastDir = ConfigItem("Paths", "LastDir", "")
     mergeUpdates = ConfigItem("Extraction", "MergeUpdates", True, BoolValidator())
+    titleFolder = ConfigItem("Extraction", "TitleFolder", True, BoolValidator())
 
     def addons_dir_for(self, games_dir: str) -> str:
         return self.get(self.addonsDir) or os.path.join(games_dir, "addcont")

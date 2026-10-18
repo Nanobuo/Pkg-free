@@ -189,7 +189,7 @@ class ProgressPage(QWidget):
         items = plan.all_items()
         self.rows = []
         for info in items:
-            dest = installer.target_dir(info, games_dir, addons_dir, separate_update)
+            dest = plan.target_dir(info, games_dir, addons_dir, separate_update)
             row = QueueRow(info, dest, games_dir, self)
             self.queue.addWidget(row)
             self.rows.append(row)

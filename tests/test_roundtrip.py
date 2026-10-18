@@ -126,7 +126,8 @@ class RoundTrip(unittest.TestCase):
             return installer.build_plan([installer.read_info(self.p(n)) for n in names], games)
 
         installer.install(plan("base.pkg", "u103.pkg"), games, self.p("dlc"), **quiet)
-        self.assertEqual(installer.installed_version(games, "CUSA00006"), "01.03")
+        game_dir = installer.find_game_dir(games, "CUSA00006")
+        self.assertEqual(installer.installed_version(game_dir), "01.03")
 
         older = plan("u102.pkg")
         self.assertEqual(len(older.downgrades), 1)
@@ -145,6 +146,51 @@ class RoundTrip(unittest.TestCase):
             rc = cli.main(["install", self.p("u102.pkg"), "-o", games, "--force"])
         self.assertEqual(rc, 0)
         self.assertEqual(pathlib.Path(games, "CUSA00006", "eboot.bin").read_bytes(), b"v102")
+
+    def test_title_folder(self):
+        cid = "UP0000-CUSA00003_00-DRIVECLUBGAME000"
+        sfo = {"CATEGORY": "gd", "TITLE_ID": "CUSA00003", "APP_VER": "01.00",
+               "TITLE": "DRIVECLUB™: Edizione?"}
+        build_pkg(self.p("base.pkg"), cid, sfo, {"eboot.bin": b"v100"})
+        build_pkg(self.p("upd.pkg"), cid, dict(sfo, CATEGORY="gp", APP_VER="01.28"),
+                  {"eboot.bin": b"v128"})
+        build_pkg(self.p("dlc.pkg"), "UP0000-CUSA00003_00-DLCPACK000000001",
+                  {"CATEGORY": "ac", "TITLE_ID": "CUSA00003", "TITLE": "DLC"}, {"d": b"d"})
+        games, addons = self.p("games"), self.p("addcont")
+        quiet = dict(log=lambda m: None)
+
+        def plan(*names, **kw):
+            infos = [installer.read_info(self.p(n)) for n in names]
+            return installer.build_plan(infos, games, title_folder=True, **kw)
+
+        installer.install(plan("base.pkg", "dlc.pkg"), games, addons, **quiet)
+        root = pathlib.Path(games, "DRIVECLUB™ - Edizione", "CUSA00003")
+        self.assertEqual((root / "eboot.bin").read_bytes(), b"v100")
+        self.assertTrue(pathlib.Path(addons, "CUSA00003", "DLCPACK000000001", "d").is_file())
+
+        # A later update alone finds the game in its title folder.
+        p = plan("upd.pkg")
+        self.assertEqual(p.warnings, [])
+        installer.install(p, games, addons, separate_update=True, **quiet)
+        self.assertEqual(pathlib.Path(f"{root}-UPDATE", "eboot.bin").read_bytes(), b"v128")
+        self.assertEqual(installer.installed_version(str(root)), "01.28")
+
+        # A game already extracted the old way (<games>/<ID>) stays where it is.
+        old = pathlib.Path(self.p("games2"), "CUSA00003")
+        old.mkdir(parents=True)
+        infos = [installer.read_info(self.p("upd.pkg"))]
+        p2 = installer.build_plan(infos, self.p("games2"), title_folder=True)
+        self.assertEqual(p2.groups["CUSA00003"].game_dir(self.p("games2")), str(old))
+
+    def test_safe_folder_name(self):
+        name = installer.safe_folder_name
+        self.assertEqual(name("Marvel's Spider-Man: Miles Morales", "X"),
+                         "Marvel's Spider-Man - Miles Morales")
+        self.assertEqual(name('A/B\\C|D<E>"F?*', "X"), "A-B-C-DEF")
+        self.assertEqual(name("Title.  ", "X"), "Title")
+        self.assertEqual(name("Line1\nLine2", "X"), "Line1 Line2")
+        self.assertEqual(name("CON", "X"), "CON_")
+        self.assertEqual(name(" ?* ", "CUSA1"), "CUSA1")
 
     def test_separate_update(self):
         build_pkg(self.p("upd.pkg"), "UP0000-CUSA00002_00-GAMEGAMEGAME0000",

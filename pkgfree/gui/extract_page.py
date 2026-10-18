@@ -97,7 +97,7 @@ class GameCard(SimpleCardWidget):
         col.addWidget(secondary(CaptionLabel(
             f"{group.title_id} · {len(items)} PKG · {fmt_size(total)}", self)))
         if games_dir:
-            dest = os.path.join(games_dir, group.title_id)
+            dest = group.game_dir(games_dir)
             col.addWidget(elastic(secondary(CaptionLabel(f"Destinazione: {dest}", self))))
         head.addLayout(col, 1)
 
@@ -210,11 +210,13 @@ class ExtractPage(QWidget):
 
         cfg.gamesDir.valueChanged.connect(lambda _: self.refresh())
         cfg.addonsDir.valueChanged.connect(lambda _: self.refresh())
+        cfg.titleFolder.valueChanged.connect(lambda _: self.refresh())
         self.refresh()
 
     # -- data --------------------------------------------------------------------
     def plan(self) -> installer.Plan:
-        return installer.build_plan(list(self.infos.values()), cfg.get(cfg.gamesDir))
+        return installer.build_plan(list(self.infos.values()), cfg.get(cfg.gamesDir),
+                                    cfg.get(cfg.titleFolder))
 
     def add_paths(self, paths) -> None:
         errors = []

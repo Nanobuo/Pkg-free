@@ -74,9 +74,17 @@ oppure **Impostazioni → Aspetto → Tema** con le opzioni *Chiaro*, *Scuro* e
 Risultato:
 
 ```
-<cartella giochi>\CUSA12345\                        gioco + tutti gli aggiornamenti
+<cartella giochi>\<Titolo>\CUSA12345\               gioco + tutti gli aggiornamenti
 <cartella DLC>\CUSA12345\<ENTITLEMENT_LABEL>\       un DLC per cartella
 ```
+
+La cartella `<Titolo>` (es. `Giochi\Driveclub\CUSA00003`) serve solo a
+riconoscere il gioco a colpo d'occhio: shadPS4 cerca i giochi anche nelle
+sottocartelle. Si può disattivare in **Impostazioni → Cartella con il nome del
+gioco** (da riga di comando: `--no-title-folder`). Se un gioco è già stato
+estratto altrove nella cartella giochi (es. `Giochi\CUSA00003`), aggiornamenti
+e patch vengono applicati lì. I DLC restano in `addcont\CUSA12345`, dove
+shadPS4 li cerca.
 
 In shadPS4:
 
@@ -88,7 +96,7 @@ In shadPS4:
 
 Opzione **Impostazioni → Unisci gli aggiornamenti al gioco** (attiva di
 default): se la disattivi, le patch vengono estratte in `CUSA12345-UPDATE`
-accanto al gioco, formato che shadPS4 riconosce e sovrappone al gioco base
+accanto alla cartella del gioco, formato che shadPS4 riconosce e sovrappone al gioco base
 all'avvio. Le impostazioni sono salvate in `%APPDATA%\PkgFree\config.json`
 (su Linux e macOS in `~/.config/PkgFree/config.json`).
 

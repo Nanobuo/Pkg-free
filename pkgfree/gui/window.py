@@ -61,7 +61,7 @@ class MainWindow(FluentWindow):
                           position=InfoBarPosition.TOP_RIGHT, parent=self)
             return
         existing = [g.title_id for g in plan.groups.values()
-                    if g.base and os.path.isdir(os.path.join(games, g.title_id))]
+                    if g.base and os.path.isdir(g.game_dir(games))]
         if plan.downgrades:
             box = MessageBox("Versione più vecchia",
                              "\n\n".join(plan.downgrades) +

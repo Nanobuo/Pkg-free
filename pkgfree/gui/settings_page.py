@@ -17,6 +17,14 @@ from .config import cfg
 REPO_URL = "https://github.com/nanobuo/pkg-free"
 
 
+class ItalianSwitchSettingCard(SwitchSettingCard):
+    """SwitchSettingCard writes "On"/"Off" on every change; show Italian labels instead."""
+
+    def setValue(self, isChecked: bool):
+        super().setValue(isChecked)
+        self.switchButton.setText("Attivo" if isChecked else "Disattivo")
+
+
 class SettingsPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -45,16 +53,21 @@ class SettingsPage(QWidget):
         self.addonsCard = PushSettingCard("Scegli cartella", FluentIcon.LIBRARY, "Cartella DLC",
                                           "", paths)
         self.addonsCard.clicked.connect(self._choose_addons)
-        self.mergeCard = SwitchSettingCard(
+        self.mergeCard = ItalianSwitchSettingCard(
             FluentIcon.SYNC, "Unisci gli aggiornamenti al gioco",
             "Se disattivato, gli aggiornamenti vengono estratti a parte in <TITLE_ID>-UPDATE",
             configItem=cfg.mergeUpdates, parent=paths)
-        self.mergeCard.switchButton.setOnText("Attivo")
-        self.mergeCard.switchButton.setOffText("Disattivo")
         self.mergeCard.setValue(cfg.get(cfg.mergeUpdates))
+        self.titleCard = ItalianSwitchSettingCard(
+            FluentIcon.TAG, "Cartella con il nome del gioco",
+            "Es. Giochi\\Driveclub\\CUSA00003: shadPS4 trova il gioco anche nella sottocartella. "
+            "I DLC restano in addcont\\<TITLE_ID>.",
+            configItem=cfg.titleFolder, parent=paths)
+        self.titleCard.setValue(cfg.get(cfg.titleFolder))
         paths.addSettingCard(self.gamesCard)
         paths.addSettingCard(self.addonsCard)
         paths.addSettingCard(self.mergeCard)
+        paths.addSettingCard(self.titleCard)
         lay.addWidget(paths)
 
         look = SettingCardGroup("Aspetto", view)

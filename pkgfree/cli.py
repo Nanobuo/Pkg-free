@@ -44,7 +44,7 @@ def _cmd_install(args) -> int:
     games = os.path.abspath(args.output)
     addons = os.path.abspath(args.addons or os.path.join(games, "addcont"))
     infos = [installer.read_info(p) for p in args.pkg]
-    plan = installer.build_plan(infos, games)
+    plan = installer.build_plan(infos, games, title_folder=not args.no_title_folder)
     for w in plan.warnings:
         print(f"ATTENZIONE: {w}")
     if plan.downgrades and not args.force:
@@ -91,6 +91,8 @@ def main(argv=None) -> int:
     p_inst.add_argument("--addons", help="cartella DLC (predefinita: <output>/addcont)")
     p_inst.add_argument("--separate-update", action="store_true",
                         help="estrai gli aggiornamenti in <TITLE_ID>-UPDATE invece di unirli")
+    p_inst.add_argument("--no-title-folder", action="store_true",
+                        help="estrai in <output>/<TITLE_ID> invece di <output>/<titolo>/<TITLE_ID>")
     p_inst.add_argument("--force", action="store_true",
                         help="procedi anche se sul disco c'è una versione più recente")
     p_inst.set_defaults(func=_cmd_install)

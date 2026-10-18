@@ -53,7 +53,7 @@ class GuiSmoke(unittest.TestCase):
             if w.worker.isRunning():
                 loop.exec()
             app.processEvents()
-            game = pathlib.Path(d, "games", "CUSA00007")
+            game = pathlib.Path(d, "games", "Gui Test", "CUSA00007")
             self.assertEqual((game / "eboot.bin").read_bytes(), b"new")
             self.assertEqual((game / "a.txt").read_bytes(), b"a")
             self.assertEqual(w.progressPage.title.text(), "Estrazione completata")
