@@ -19,7 +19,8 @@ anche gli eseguibili con GitHub Actions (scheda **Actions** → ultima esecuzion
 di *Build* → artefatti). Creando un tag `v*` (es. `v1.2.0`) viene pubblicata
 una release con un file per ogni sistema. In alternativa, senza creare il tag a mano: **Actions → Build →
 Run workflow**, scrivendo la versione (es. `v1.2.0`) nel campo del tag; deve
-corrispondere a `__version__` in `pkgfree/__init__.py`.
+corrispondere a `__version__` in `pkgfree/__init__.py`. La descrizione della release è la
+sezione `## vX.Y.Z` di [`CHANGELOG.md`](CHANGELOG.md), che va scritta prima.
 
 | Sistema | File |
 |---|---|

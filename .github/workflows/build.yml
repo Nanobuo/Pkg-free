@@ -161,26 +161,22 @@ jobs:
           cp artifacts/PkgFree-macos/PkgFree-macos-arm64.zip release/PkgFree-macos-arm64.zip
           ls -la release
 
+      - name: Release notes from CHANGELOG.md
+        run: |
+          # The "## <tag>" section, up to the next "## " heading.
+          awk -v tag="## $TAG" '$0 == tag {on=1; next} /^## / {on=0} on' CHANGELOG.md \
+            | sed -e '/./,$!d' > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "::error::Manca la sezione '## $TAG' in CHANGELOG.md"
+            exit 1
+          fi
+          cat release-notes.md
+
       - uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.TAG }}
           name: PKG Free ${{ env.TAG }}
           target_commitish: ${{ github.sha }}
+          body_path: release-notes.md
           files: release/*
           fail_on_unmatched_files: true
-          generate_release_notes: true
-          body: |
-            ## Download
-
-            | Sistema | File |
-            |---|---|
-            | Windows 10/11 (x64) | `PkgFree-windows-x64.exe` (interfaccia grafica), `pkgfree-cli-windows-x64.exe` (riga di comando) |
-            | Linux (x86_64) | `PkgFree-linux-x86_64.AppImage` (grafica senza argomenti, riga di comando con argomenti) |
-            | macOS (Apple Silicon) | `PkgFree-macos-arm64.zip` (contiene `PkgFree.app`) |
-
-            ## Note
-
-            - Supporta solo PKG **fake (fPKG)**: backup dei propri giochi e homebrew. I PKG retail del PlayStation Store non si possono estrarre.
-            - **Windows:** l'eseguibile non è firmato; se compare "Windows ha protetto il PC" scegli *Ulteriori informazioni → Esegui comunque*.
-            - **Linux:** `chmod +x PkgFree-linux-x86_64.AppImage` prima di avviarlo.
-            - **macOS:** l'app non è firmata; al primo avvio consentila da *Impostazioni di Sistema → Privacy e sicurezza → Apri comunque*.
