@@ -11,6 +11,7 @@ from qfluentwidgets import (BodyLabel, CaptionLabel, FluentIcon, IconWidget, Ima
                             TitleLabel, ToolTipFilter, TransparentToolButton)
 
 from .. import installer
+from ..i18n import tr
 from .config import cfg
 from .widgets import elastic, secondary
 
@@ -39,7 +40,7 @@ class GameRow(SimpleCardWidget):
         if entry.version:
             parts.append(f"v{entry.version}")
         if entry.update_dir:
-            parts.append("aggiornamento separato")
+            parts.append(tr("aggiornamento separato"))
         if entry.dlcs:
             parts.append("1 DLC" if len(entry.dlcs) == 1 else f"{len(entry.dlcs)} DLC")
         info = secondary(CaptionLabel(" · ".join(parts), self))
@@ -51,7 +52,7 @@ class GameRow(SimpleCardWidget):
         lay.addLayout(col, 1)
 
         btn = TransparentToolButton(FluentIcon.FOLDER, self)
-        btn.setToolTip("Apri la cartella del gioco")
+        btn.setToolTip(tr("Apri la cartella del gioco"))
         btn.installEventFilter(ToolTipFilter(btn))
         btn.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(entry.path)))
@@ -82,11 +83,11 @@ class LibraryPage(QWidget):
         head = QHBoxLayout()
         titles = QVBoxLayout()
         titles.setSpacing(2)
-        titles.addWidget(TitleLabel("Libreria", view))
+        titles.addWidget(TitleLabel(tr("Libreria"), view))
         self.summary = secondary(BodyLabel("", view))
         titles.addWidget(elastic(self.summary))
         head.addLayout(titles, 1)
-        refresh = PushButton(FluentIcon.SYNC, "Aggiorna", view)
+        refresh = PushButton(FluentIcon.SYNC, tr("Aggiorna"), view)
         refresh.clicked.connect(self.refresh)
         head.addWidget(refresh, 0, Qt.AlignTop)
         self.body.addLayout(head)
@@ -102,16 +103,17 @@ class LibraryPage(QWidget):
         self.rows = []
         games = cfg.get(cfg.gamesDir)
         if not games:
-            self.summary.setText("Scegli la cartella dei giochi nella pagina Estrai o nelle "
-                                 "Impostazioni.")
+            self.summary.setText(tr("Scegli la cartella dei giochi nella pagina Estrai o nelle "
+                                    "Impostazioni."))
             return
         addons = cfg.addons_dir_for(games)
         entries = installer.scan_library(games, addons)
         if not entries:
-            self.summary.setText(f"Nessun gioco estratto in {games}")
+            self.summary.setText(tr("Nessun gioco estratto in {folder}", folder=games))
         else:
             n = len(entries)
-            self.summary.setText(f"{n} giochi in {games}" if n != 1 else f"1 gioco in {games}")
+            self.summary.setText(tr("{n} giochi in {folder}", n=n, folder=games) if n != 1
+                                 else tr("1 gioco in {folder}", folder=games))
         for entry in entries:
             row = GameRow(entry, self)
             self.list.addWidget(row)

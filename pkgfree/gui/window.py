@@ -11,6 +11,7 @@ from qfluentwidgets import (FluentIcon, FluentWindow, InfoBar, InfoBarIcon, Info
                             NavigationItemPosition, PushButton, Theme, isDarkTheme)
 
 from .. import __version__, installer, updater
+from ..i18n import tr
 from ..pkg import PkgError
 from .config import cfg
 from .extract_page import ExtractPage
@@ -47,14 +48,14 @@ class MainWindow(FluentWindow):
         self.logPage = LogPage(self)
         self.settingsPage = SettingsPage(self)
 
-        self.addSubInterface(self.extractPage, FluentIcon.DOWNLOAD, "Estrai")
-        self.addSubInterface(self.libraryPage, FluentIcon.LIBRARY, "Libreria")
-        self.addSubInterface(self.progressPage, FluentIcon.SPEED_HIGH, "Avanzamento")
-        self.addSubInterface(self.logPage, FluentIcon.DOCUMENT, "Registro")
+        self.addSubInterface(self.extractPage, FluentIcon.DOWNLOAD, tr("Estrai"))
+        self.addSubInterface(self.libraryPage, FluentIcon.LIBRARY, tr("Libreria"))
+        self.addSubInterface(self.progressPage, FluentIcon.SPEED_HIGH, tr("Avanzamento"))
+        self.addSubInterface(self.logPage, FluentIcon.DOCUMENT, tr("Registro"))
         self.navigationInterface.addItem(
-            "themeToggle", FluentIcon.CONSTRACT, "Cambia tema", onClick=self.toggle_theme,
+            "themeToggle", FluentIcon.CONSTRACT, tr("Cambia tema"), onClick=self.toggle_theme,
             selectable=False, position=NavigationItemPosition.BOTTOM)
-        self.addSubInterface(self.settingsPage, FluentIcon.SETTING, "Impostazioni",
+        self.addSubInterface(self.settingsPage, FluentIcon.SETTING, tr("Impostazioni"),
                              NavigationItemPosition.BOTTOM)
 
         self.extractPage.startRequested.connect(self.start_extraction)
@@ -71,7 +72,7 @@ class MainWindow(FluentWindow):
     def check_updates(self, manual: bool) -> None:
         if self.updateCheck is not None and self.updateCheck.isRunning():
             return
-        self.settingsPage.set_update_status("Controllo in corso…")
+        self.settingsPage.set_update_status(tr("Controllo in corso…"))
         self.updateCheck = UpdateCheckWorker(self)
         self.updateCheck.found.connect(self._update_found)
         self.updateCheck.upToDate.connect(lambda rel: self._update_none(rel, manual))
@@ -79,44 +80,48 @@ class MainWindow(FluentWindow):
         self.updateCheck.start()
 
     def _update_found(self, release) -> None:
-        self.settingsPage.set_update_status(
-            f"PKG Free {__version__} · disponibile la versione {release.version}")
-        self.logPage.append(f"Disponibile PKG Free {release.version}")
+        self.settingsPage.set_update_status(tr(
+            "PKG Free {current} · disponibile la versione {version}", current=__version__,
+            version=release.version))
+        self.logPage.append(tr("Disponibile PKG Free {version}", version=release.version))
         if self.updateBar is not None:
             self.updateBar.close()
         # Built in full before show(): the bar sizes itself when shown.
         self.updateBar = InfoBar(
-            InfoBarIcon.INFORMATION, "Aggiornamento disponibile", f"PKG Free {release.version}",
+            InfoBarIcon.INFORMATION, tr("Aggiornamento disponibile"), f"PKG Free {release.version}",
             isClosable=True, duration=-1, position=InfoBarPosition.TOP_RIGHT,
             parent=self.stackedWidget)
-        button = PushButton("Dettagli", self.updateBar)
+        button = PushButton(tr("Dettagli"), self.updateBar)
         button.clicked.connect(lambda: self.show_update(release))
         self.updateBar.addWidget(button)
         self.updateBar.show()
 
     def _update_none(self, release, manual: bool) -> None:
-        self.settingsPage.set_update_status(f"PKG Free {__version__} · è l'ultima versione")
+        self.settingsPage.set_update_status(
+            tr("PKG Free {current} · è l'ultima versione", current=__version__))
         if manual:
-            InfoBar.success("Nessun aggiornamento", f"Stai già usando l'ultima versione "
-                            f"({release.version}).", duration=4000,
+            InfoBar.success(tr("Nessun aggiornamento"),
+                            tr("Stai già usando l'ultima versione ({version}).",
+                               version=release.version), duration=4000,
                             position=InfoBarPosition.TOP_RIGHT, parent=self)
 
     def _update_failed(self, message: str, manual: bool) -> None:
-        self.settingsPage.set_update_status(f"PKG Free {__version__} · controllo non riuscito")
-        self.logPage.append(f"Controllo aggiornamenti: {message}")
+        self.settingsPage.set_update_status(
+            tr("PKG Free {current} · controllo non riuscito", current=__version__))
+        self.logPage.append(tr("Controllo aggiornamenti: {message}", message=message))
         if manual:
-            InfoBar.warning("Controllo non riuscito", message, duration=6000,
+            InfoBar.warning(tr("Controllo non riuscito"), message, duration=6000,
                             position=InfoBarPosition.TOP_RIGHT, parent=self)
 
     def show_update(self, release) -> None:
         if self.worker and self.worker.isRunning():
-            InfoBar.warning("Estrazione in corso", "Aggiorna al termine dell'estrazione.",
+            InfoBar.warning(tr("Estrazione in corso"), tr("Aggiorna al termine dell'estrazione."),
                             duration=4000, position=InfoBarPosition.TOP_RIGHT, parent=self)
             return
         UpdateDialog(release, self).exec()
 
     def _restart_needed(self) -> None:
-        InfoBar.info("Riavvio necessario", "La nuova lingua verrà usata al prossimo avvio.",
+        InfoBar.info(tr("Riavvio necessario"), tr("La nuova lingua verrà usata al prossimo avvio."),
                      duration=5000, position=InfoBarPosition.TOP_RIGHT, parent=self)
 
     # -- theme -----------------------------------------------------------------------
@@ -133,25 +138,26 @@ class MainWindow(FluentWindow):
         try:
             plan = self.extractPage.plan()
         except PkgError as ex:
-            InfoBar.error("Impossibile procedere", str(ex), duration=6000,
+            InfoBar.error(tr("Impossibile procedere"), str(ex), duration=6000,
                           position=InfoBarPosition.TOP_RIGHT, parent=self)
             return
         existing = [g.title_id for g in plan.groups.values()
                     if g.base and os.path.isdir(g.game_dir(games))]
         if plan.downgrades:
-            box = MessageBox("Versione più vecchia",
-                             "\n\n".join(plan.downgrades) +
-                             "\n\nVuoi davvero sovrascrivere la versione installata?", self)
-            box.yesButton.setText("Sovrascrivi")
-            box.cancelButton.setText("Annulla")
+            box = MessageBox(tr("Versione più vecchia"),
+                             "\n\n".join(plan.downgrades) + "\n\n" +
+                             tr("Vuoi davvero sovrascrivere la versione installata?"), self)
+            box.yesButton.setText(tr("Sovrascrivi"))
+            box.cancelButton.setText(tr("Annulla"))
             if not box.exec():
                 return
         elif existing:
-            box = MessageBox("Cartella già esistente",
-                             "Esiste già una cartella per " + ", ".join(existing) +
-                             ". I file con lo stesso nome verranno sovrascritti. Continuare?", self)
-            box.yesButton.setText("Continua")
-            box.cancelButton.setText("Annulla")
+            box = MessageBox(tr("Cartella già esistente"),
+                             tr("Esiste già una cartella per {games}. I file con lo stesso nome "
+                                "verranno sovrascritti. Continuare?", games=", ".join(existing)),
+                             self)
+            box.yesButton.setText(tr("Continua"))
+            box.cancelButton.setText(tr("Annulla"))
             if not box.exec():
                 return
 
@@ -179,18 +185,20 @@ class MainWindow(FluentWindow):
             shortages = installer.check_space(plan, games, addons, separate)
         except (PkgError, OSError) as ex:
             shortages = []
-            self.logPage.append(f"Controllo dello spazio non riuscito: {ex}")
+            self.logPage.append(tr("Controllo dello spazio non riuscito: {error}", error=ex))
         finally:
             QApplication.restoreOverrideCursor()
         if not shortages:
             return True
-        lines = [f"• {sh.path}: servono {fmt_size(sh.needed)}, liberi {fmt_size(sh.free)}"
+        lines = ["• " + tr("{path}: servono {needed}, liberi {free}", path=sh.path,
+                            needed=fmt_size(sh.needed), free=fmt_size(sh.free))
                  for sh in shortages]
-        box = MessageBox("Spazio su disco insufficiente",
-                         "\n".join(lines) + "\n\nL'estrazione si fermerebbe a metà. "
-                         "Libera spazio oppure scegli un'altra cartella.", self)
-        box.yesButton.setText("Estrai comunque")
-        box.cancelButton.setText("Annulla")
+        box = MessageBox(tr("Spazio su disco insufficiente"),
+                         "\n".join(lines) + "\n\n" +
+                         tr("L'estrazione si fermerebbe a metà. Libera spazio oppure scegli "
+                            "un'altra cartella."), self)
+        box.yesButton.setText(tr("Estrai comunque"))
+        box.cancelButton.setText(tr("Annulla"))
         return bool(box.exec())
 
     def _show_fraction(self, frac: float) -> None:
@@ -211,7 +219,7 @@ class MainWindow(FluentWindow):
             self.tray.activated.connect(lambda _reason: self._raise())
         self.tray.show()
         if ok:
-            self.tray.showMessage(APP_NAME, "Estrazione completata.",
+            self.tray.showMessage(APP_NAME, tr("Estrazione completata."),
                                   QSystemTrayIcon.Information, 8000)
         else:
             self.tray.showMessage(APP_NAME, message, QSystemTrayIcon.Warning, 8000)
@@ -226,7 +234,7 @@ class MainWindow(FluentWindow):
         if self.worker and self.worker.isRunning():
             self.worker.cancel()
             self.progressPage.cancelButton.setEnabled(False)
-            self.progressPage.stats.setText("Annullamento…")
+            self.progressPage.stats.setText(tr("Annullamento…"))
 
     def _finished(self, ok: bool, message: str) -> None:
         self.setWindowTitle(APP_NAME)
@@ -235,13 +243,14 @@ class MainWindow(FluentWindow):
         self.extractPage.set_busy(False)
         self.extractPage.refresh()
         if not ok:
-            self.logPage.append("ERRORE: " + message)
+            self.logPage.append(tr("ERRORE: {message}", message=message))
 
     def closeEvent(self, e):
         if self.worker and self.worker.isRunning():
-            box = MessageBox("Estrazione in corso", "Vuoi interrompere l'estrazione e uscire?", self)
-            box.yesButton.setText("Interrompi ed esci")
-            box.cancelButton.setText("Continua")
+            box = MessageBox(tr("Estrazione in corso"),
+                             tr("Vuoi interrompere l'estrazione e uscire?"), self)
+            box.yesButton.setText(tr("Interrompi ed esci"))
+            box.cancelButton.setText(tr("Continua"))
             if not box.exec():
                 e.ignore()
                 return

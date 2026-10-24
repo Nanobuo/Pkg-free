@@ -12,17 +12,18 @@ from qfluentwidgets import (FluentIcon, HyperlinkCard, OptionsSettingCard, Plain
                             TitleLabel)
 
 from .. import __version__
+from ..i18n import tr
 from .config import cfg
 
 REPO_URL = "https://github.com/nanobuo/pkg-free"
 
 
-class ItalianSwitchSettingCard(SwitchSettingCard):
-    """SwitchSettingCard writes "On"/"Off" on every change; show Italian labels instead."""
+class LocalizedSwitchSettingCard(SwitchSettingCard):
+    """SwitchSettingCard writes "On"/"Off" on every change; show translated labels instead."""
 
     def setValue(self, isChecked: bool):
         super().setValue(isChecked)
-        self.switchButton.setText("Attivo" if isChecked else "Disattivo")
+        self.switchButton.setText(tr("Attivo") if isChecked else tr("Disattivo"))
 
 
 class SettingsPage(QWidget):
@@ -46,64 +47,70 @@ class SettingsPage(QWidget):
         lay = QVBoxLayout(view)
         lay.setContentsMargins(36, 24, 36, 24)
         lay.setSpacing(24)
-        lay.addWidget(TitleLabel("Impostazioni", view))
+        lay.addWidget(TitleLabel(tr("Impostazioni"), view))
 
-        paths = SettingCardGroup("Cartelle", view)
-        self.gamesCard = PushSettingCard("Scegli cartella", FluentIcon.FOLDER, "Cartella giochi",
+        paths = SettingCardGroup(tr("Cartelle"), view)
+        self.gamesCard = PushSettingCard(tr("Scegli cartella"), FluentIcon.FOLDER,
+                                         tr("Cartella giochi"),
                                          "", paths)
         self.gamesCard.clicked.connect(self._choose_games)
-        self.addonsCard = PushSettingCard("Scegli cartella", FluentIcon.LIBRARY, "Cartella DLC",
+        self.addonsCard = PushSettingCard(tr("Scegli cartella"), FluentIcon.LIBRARY,
+                                          tr("Cartella DLC"),
                                           "", paths)
         self.addonsCard.clicked.connect(self._choose_addons)
         paths.addSettingCard(self.gamesCard)
         paths.addSettingCard(self.addonsCard)
         lay.addWidget(paths)
 
-        extraction = SettingCardGroup("Estrazione", view)
+        extraction = SettingCardGroup(tr("Estrazione"), view)
         self.mergeCard = self._switch(
-            extraction, cfg.mergeUpdates, FluentIcon.SYNC, "Unisci gli aggiornamenti al gioco",
-            "Se disattivato, gli aggiornamenti vengono estratti a parte in <TITLE_ID>-UPDATE")
+            extraction, cfg.mergeUpdates, FluentIcon.SYNC, tr("Unisci gli aggiornamenti al gioco"),
+            tr("Se disattivato, gli aggiornamenti vengono estratti a parte in <TITLE_ID>-UPDATE"))
         self.titleCard = self._switch(
-            extraction, cfg.titleFolder, FluentIcon.TAG, "Cartella con il nome del gioco",
-            "Es. Giochi\\Driveclub\\CUSA00003: shadPS4 trova il gioco anche nella sottocartella. "
-            "I DLC restano in addcont\\<TITLE_ID>.")
+            extraction, cfg.titleFolder, FluentIcon.TAG, tr("Cartella con il nome del gioco"),
+            tr("Es. Giochi\\Driveclub\\CUSA00003: shadPS4 trova il gioco anche nella "
+               "sottocartella. I DLC restano in addcont\\<TITLE_ID>."))
         self.verifyCard = self._switch(
-            extraction, cfg.verifyPkgs, FluentIcon.CERTIFICATE, "Verifica i PKG prima di estrarli",
-            "Controlla le impronte SHA-256 per scoprire download danneggiati. Rilegge tutto il "
-            "PKG: circa un minuto in più ogni 50 GB.")
+            extraction, cfg.verifyPkgs, FluentIcon.CERTIFICATE,
+            tr("Verifica i PKG prima di estrarli"),
+            tr("Controlla le impronte SHA-256 per scoprire download danneggiati. Rilegge tutto "
+               "il PKG: circa un minuto in più ogni 50 GB."))
         self.deleteCard = self._switch(
-            extraction, cfg.deletePkgs, FluentIcon.DELETE, "Sposta i PKG nel Cestino al termine",
-            "Solo se l'estrazione di tutti i PKG è riuscita.")
+            extraction, cfg.deletePkgs, FluentIcon.DELETE, tr("Sposta i PKG nel Cestino al termine"),
+            tr("Solo se l'estrazione di tutti i PKG è riuscita."))
         self.notifyCard = self._switch(
-            extraction, cfg.notifyDone, FluentIcon.RINGER, "Notifica a fine estrazione",
-            "Mostra una notifica di sistema se nel frattempo stai usando un'altra finestra.")
+            extraction, cfg.notifyDone, FluentIcon.RINGER, tr("Notifica a fine estrazione"),
+            tr("Mostra una notifica di sistema se nel frattempo stai usando un'altra finestra."))
         lay.addWidget(extraction)
 
-        look = SettingCardGroup("Aspetto", view)
+        look = SettingCardGroup(tr("Aspetto"), view)
         self.themeCard = OptionsSettingCard(
-            cfg.themeMode, FluentIcon.BRUSH, "Tema", "Chiaro, scuro o come Windows",
-            texts=["Chiaro", "Scuro", "Usa impostazione di sistema"], parent=look)
+            cfg.themeMode, FluentIcon.BRUSH, tr("Tema"), tr("Chiaro, scuro o come Windows"),
+            texts=[tr("Chiaro"), tr("Scuro"), tr("Usa impostazione di sistema")], parent=look)
         self.languageCard = OptionsSettingCard(
-            cfg.language, FluentIcon.LANGUAGE, "Lingua", "Si applica al prossimo avvio",
-            texts=["Automatica (lingua del sistema)", "Italiano", "English"], parent=look)
+            cfg.language, FluentIcon.LANGUAGE, tr("Lingua"), tr("Si applica al prossimo avvio"),
+            texts=[tr("Automatica (lingua del sistema)"), "Italiano", "English"], parent=look)
         look.addSettingCard(self.themeCard)
         look.addSettingCard(self.languageCard)
         lay.addWidget(look)
 
-        updates = SettingCardGroup("Aggiornamenti", view)
+        updates = SettingCardGroup(tr("Aggiornamenti"), view)
         self.updateSwitch = self._switch(
-            updates, cfg.checkUpdates, FluentIcon.UPDATE, "Controlla gli aggiornamenti all'avvio",
-            "Cerca una nuova versione su GitHub quando apri il programma.")
-        self.updateCard = PushSettingCard("Controlla ora", FluentIcon.SYNC, "Versione installata",
-                                          f"PKG Free {__version__}", updates)
+            updates, cfg.checkUpdates, FluentIcon.UPDATE,
+            tr("Controlla gli aggiornamenti all'avvio"),
+            tr("Cerca una nuova versione su GitHub quando apri il programma."))
+        self.updateCard = PushSettingCard(tr("Controlla ora"), FluentIcon.SYNC,
+                                          tr("Versione installata"), f"PKG Free {__version__}",
+                                          updates)
         self.updateCard.clicked.connect(self.checkUpdatesRequested)
         updates.addSettingCard(self.updateCard)
         lay.addWidget(updates)
 
-        about = SettingCardGroup("Informazioni", view)
+        about = SettingCardGroup(tr("Informazioni"), view)
         about.addSettingCard(HyperlinkCard(
-            REPO_URL, "Codice sorgente", FluentIcon.INFO, "PKG Free",
-            f"Versione {__version__} · GPL-3.0 · supporta solo PKG fake (fPKG)", about))
+            REPO_URL, tr("Codice sorgente"), FluentIcon.INFO, "PKG Free",
+            tr("Versione {version} · GPL-3.0 · supporta solo PKG fake (fPKG)",
+               version=__version__), about))
         lay.addWidget(about)
         lay.addStretch(1)
 
@@ -113,7 +120,7 @@ class SettingsPage(QWidget):
 
     @staticmethod
     def _switch(group, item, icon, title, content):
-        card = ItalianSwitchSettingCard(icon, title, content, configItem=item, parent=group)
+        card = LocalizedSwitchSettingCard(icon, title, content, configItem=item, parent=group)
         card.setValue(cfg.get(item))
         group.addSettingCard(card)
         return card
@@ -123,21 +130,24 @@ class SettingsPage(QWidget):
 
     def _refresh(self) -> None:
         games = cfg.get(cfg.gamesDir)
-        self.gamesCard.setContent(games or "Non impostata")
+        self.gamesCard.setContent(games or tr("Non impostata"))
         addons = cfg.get(cfg.addonsDir)
         if addons:
             self.addonsCard.setContent(addons)
         else:
-            default = os.path.join(games, "addcont") if games else "<cartella giochi>\\addcont"
-            self.addonsCard.setContent(f"Predefinita: {default}")
+            default = (os.path.join(games, "addcont") if games
+                       else tr("<cartella giochi>\\addcont"))
+            self.addonsCard.setContent(tr("Predefinita: {folder}", folder=default))
 
     def _choose_games(self) -> None:
-        folder = QFileDialog.getExistingDirectory(self, "Cartella dei giochi", cfg.get(cfg.gamesDir))
+        folder = QFileDialog.getExistingDirectory(self, tr("Cartella dei giochi"),
+                                                  cfg.get(cfg.gamesDir))
         if folder:
             cfg.set(cfg.gamesDir, os.path.normpath(folder))
 
     def _choose_addons(self) -> None:
-        folder = QFileDialog.getExistingDirectory(self, "Cartella DLC", cfg.get(cfg.addonsDir))
+        folder = QFileDialog.getExistingDirectory(self, tr("Cartella DLC"),
+                                                  cfg.get(cfg.addonsDir))
         if folder:
             cfg.set(cfg.addonsDir, os.path.normpath(folder))
 
@@ -149,7 +159,7 @@ class LogPage(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(36, 24, 36, 24)
         lay.setSpacing(14)
-        lay.addWidget(TitleLabel("Registro", self))
+        lay.addWidget(TitleLabel(tr("Registro"), self))
         self.text = PlainTextEdit(self)
         self.text.setReadOnly(True)
         font = QFont()

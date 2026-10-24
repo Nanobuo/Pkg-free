@@ -9,6 +9,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+os.environ["PKGFREE_LANG"] = "it"  # messages checked by the tests are Italian
 
 try:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

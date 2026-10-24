@@ -15,9 +15,10 @@ from qfluentwidgets import (BodyLabel, CaptionLabel, FlowLayout, FluentIcon, Ico
                             TransparentToolButton, setCustomStyleSheet)
 
 from .. import installer
+from ..i18n import tr
 from ..pkg import PkgError, PkgInfo
 from .config import cfg
-from .widgets import KIND_LABEL, DropZone, StepBadge, elastic, elide, fmt_size, secondary
+from .widgets import DropZone, StepBadge, elastic, elide, fmt_size, secondary
 
 
 def collect_pkgs(paths) -> list[str]:
@@ -44,7 +45,7 @@ class StepChip(SimpleCardWidget):
         lay.addWidget(StepBadge(number, info.kind == "dlc", self), 0, Qt.AlignTop)
         col = QVBoxLayout()
         col.setSpacing(2)
-        col.addWidget(StrongBodyLabel(KIND_LABEL[info.kind], self))
+        col.addWidget(StrongBodyLabel(installer.kind_label(info.kind), self))
         size = fmt_size(os.path.getsize(info.path))
         if info.kind == "dlc":
             detail = f"{info.entitlement_label or info.content_id} · {size}"
@@ -58,7 +59,7 @@ class StepChip(SimpleCardWidget):
         btn = TransparentToolButton(FluentIcon.CLOSE, self)
         btn.setFixedSize(24, 24)
         btn.setIconSize(btn.iconSize() * 0.7)
-        btn.setToolTip("Rimuovi questo PKG")
+        btn.setToolTip(tr("Rimuovi questo PKG"))
         btn.installEventFilter(ToolTipFilter(btn))
         btn.clicked.connect(lambda: self.removeRequested.emit(info.path))
         lay.addWidget(btn, 0, Qt.AlignTop)
@@ -98,23 +99,23 @@ class GameCard(SimpleCardWidget):
             f"{group.title_id} · {len(items)} PKG · {fmt_size(total)}", self)))
         if games_dir:
             dest = group.game_dir(games_dir)
-            col.addWidget(elastic(secondary(CaptionLabel(f"Destinazione: {dest}", self))))
+            col.addWidget(elastic(secondary(CaptionLabel(tr("Destinazione: {dest}", dest=dest), self))))
         head.addLayout(col, 1)
 
         if group.final_version:
             ver = QVBoxLayout()
             ver.setSpacing(0)
-            ver.addWidget(secondary(CaptionLabel("Versione finale", self)), 0, Qt.AlignRight)
+            ver.addWidget(secondary(CaptionLabel(tr("Versione finale"), self)), 0, Qt.AlignRight)
             ver.addWidget(SubtitleLabel(group.final_version, self), 0, Qt.AlignRight)
             head.addLayout(ver)
         rm = TransparentToolButton(FluentIcon.DELETE, self)
-        rm.setToolTip("Rimuovi questo gioco dall'elenco")
+        rm.setToolTip(tr("Rimuovi questo gioco dall'elenco"))
         rm.installEventFilter(ToolTipFilter(rm))
         rm.clicked.connect(lambda: self.removeRequested.emit([i.path for i in items]))
         head.addWidget(rm, 0, Qt.AlignTop)
         lay.addLayout(head)
 
-        lay.addWidget(secondary(CaptionLabel("Ordine di applicazione", self)))
+        lay.addWidget(secondary(CaptionLabel(tr("Ordine di applicazione"), self)))
         steps = QWidget(self)
         flow = FlowLayout(steps, needAni=False)
         flow.setContentsMargins(0, 0, 0, 0)
@@ -133,7 +134,7 @@ class GameCard(SimpleCardWidget):
         lay.addWidget(steps)
 
         for text in group.warnings(games_dir):
-            bar = InfoBar(InfoBarIcon.WARNING, "Attenzione", text, Qt.Horizontal,
+            bar = InfoBar(InfoBarIcon.WARNING, tr("Attenzione"), text, Qt.Horizontal,
                           isClosable=False, duration=-1, position=InfoBarPosition.NONE,
                           parent=self)
             lay.addWidget(bar)
@@ -165,14 +166,14 @@ class ExtractPage(QWidget):
         self.body = QVBoxLayout(view)
         self.body.setContentsMargins(36, 24, 36, 24)
         self.body.setSpacing(14)
-        self.body.addWidget(TitleLabel("I tuoi giochi", view))
+        self.body.addWidget(TitleLabel(tr("I tuoi giochi"), view))
         self.drop = DropZone(view)
         self.drop.addFilesClicked.connect(self.choose_files)
         self.drop.addFolderClicked.connect(self.choose_folder)
         self.body.addWidget(self.drop)
-        self.empty = secondary(BodyLabel(
+        self.empty = secondary(BodyLabel(tr(
             "Nessun PKG aggiunto. Puoi aggiungere insieme gioco base, aggiornamenti e DLC: "
-            "vengono raggruppati per gioco e applicati nell'ordine giusto.", view))
+            "vengono raggruppati per gioco e applicati nell'ordine giusto."), view))
         self.empty.setWordWrap(True)
         self.body.addWidget(self.empty)
         self.cardsLayout = QVBoxLayout()
@@ -195,14 +196,14 @@ class ExtractPage(QWidget):
         self.summary = secondary(CaptionLabel("", bar))
         info.addWidget(self.summary)
         self.destButton = TransparentPushButton(FluentIcon.FOLDER, "", bar)
-        self.destButton.setToolTip("Cartella in cui estrarre i giochi")
+        self.destButton.setToolTip(tr("Cartella in cui estrarre i giochi"))
         self.destButton.installEventFilter(ToolTipFilter(self.destButton))
         self.destButton.clicked.connect(self.choose_games_dir)
         info.addWidget(self.destButton, 0, Qt.AlignLeft)
         bl.addLayout(info, 1)
-        self.clearButton = PushButton(FluentIcon.BROOM, "Svuota", bar)
+        self.clearButton = PushButton(FluentIcon.BROOM, tr("Svuota"), bar)
         self.clearButton.clicked.connect(self.clear)
-        self.startButton = PrimaryPushButton(FluentIcon.DOWNLOAD, "Estrai tutto", bar)
+        self.startButton = PrimaryPushButton(FluentIcon.DOWNLOAD, tr("Estrai tutto"), bar)
         self.startButton.clicked.connect(self.startRequested)
         bl.addWidget(self.clearButton)
         bl.addWidget(self.startButton)
@@ -234,7 +235,7 @@ class ExtractPage(QWidget):
             self.icons[path] = installer.read_icon(path)
             cfg.set(cfg.lastDir, os.path.dirname(path))
         if errors:
-            InfoBar.error("Alcuni PKG non sono stati aggiunti", "\n".join(errors),
+            InfoBar.error(tr("Alcuni PKG non sono stati aggiunti"), "\n".join(errors),
                           duration=8000, position=InfoBarPosition.TOP_RIGHT, parent=self.window())
         self.refresh()
 
@@ -273,30 +274,33 @@ class ExtractPage(QWidget):
         n_pkg = len(self.infos)
         total = sum(os.path.getsize(p) for p in self.infos)
         self.summary.setText(
-            f"{len(plan.groups)} giochi · {n_pkg} PKG · {fmt_size(total)}" if n_pkg
-            else "Nessun PKG")
+            tr("{games} giochi · {pkgs} PKG · {size}", games=len(plan.groups), pkgs=n_pkg,
+               size=fmt_size(total)) if n_pkg else tr("Nessun PKG"))
         self.destButton.setText(elide(self.destButton, games_dir, 480) if games_dir
-                                else "Scegli la cartella dei giochi…")
+                                else tr("Scegli la cartella dei giochi…"))
         self.startButton.setEnabled(bool(n_pkg))
         self.clearButton.setEnabled(bool(n_pkg))
 
     # -- dialogs -------------------------------------------------------------------
     def choose_files(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(
-            self, "Seleziona i file PKG", cfg.get(cfg.lastDir), "PKG PS4 (*.pkg);;Tutti i file (*)")
+            self, tr("Seleziona i file PKG"), cfg.get(cfg.lastDir),
+            tr("PKG PS4 (*.pkg);;Tutti i file (*)"))
         if paths:
             self.add_paths(paths)
 
     def choose_folder(self) -> None:
-        folder = QFileDialog.getExistingDirectory(self, "Cartella con file PKG", cfg.get(cfg.lastDir))
+        folder = QFileDialog.getExistingDirectory(self, tr("Cartella con file PKG"),
+                                                  cfg.get(cfg.lastDir))
         if folder:
             if not collect_pkgs([folder]):
-                InfoBar.info("Nessun PKG", "La cartella non contiene file .pkg.", duration=4000,
+                InfoBar.info(tr("Nessun PKG"), tr("La cartella non contiene file .pkg."), duration=4000,
                              position=InfoBarPosition.TOP_RIGHT, parent=self.window())
             self.add_paths([folder])
 
     def choose_games_dir(self) -> bool:
-        folder = QFileDialog.getExistingDirectory(self, "Cartella dei giochi", cfg.get(cfg.gamesDir))
+        folder = QFileDialog.getExistingDirectory(self, tr("Cartella dei giochi"),
+                                                  cfg.get(cfg.gamesDir))
         if folder:
             cfg.set(cfg.gamesDir, os.path.normpath(folder))
             return True

@@ -14,8 +14,9 @@ from qfluentwidgets import (BodyLabel, CaptionLabel, FluentIcon, IconWidget, Inf
                             ProgressRing, PushButton, ScrollArea, SimpleCardWidget, TitleLabel)
 
 from .. import installer
+from ..i18n import tr
 from ..pkg import Cancelled, PkgError, PkgInfo
-from .widgets import KIND_LABEL, elastic, fmt_size, secondary
+from .widgets import elastic, fmt_size, secondary
 
 
 class ExtractWorker(QThread):
@@ -65,12 +66,12 @@ class ExtractWorker(QThread):
                 remove_pkg=self.remove_pkg)
             self.succeeded.emit()
         except Cancelled:
-            self.failed.emit("Operazione annullata. Avviando di nuovo l'estrazione con gli stessi "
-                             "PKG riprenderà da dove si è fermata.")
+            self.failed.emit(tr("Operazione annullata. Avviando di nuovo l'estrazione con gli "
+                                "stessi PKG riprenderà da dove si è fermata."))
         except (PkgError, OSError) as ex:
             self.failed.emit(str(ex))
         except Exception as ex:  # keep the UI alive and tell the user
-            self.failed.emit(f"Errore inatteso: {ex!r}")
+            self.failed.emit(tr("Errore inatteso: {error}", error=repr(ex)))
 
 
 class QueueRow(SimpleCardWidget):
@@ -91,7 +92,7 @@ class QueueRow(SimpleCardWidget):
         col = QVBoxLayout()
         col.setSpacing(0)
         ver = info.app_ver or info.version
-        name = KIND_LABEL[info.kind]
+        name = installer.kind_label(info.kind)
         if info.kind == "dlc":
             name += f" {info.entitlement_label}"
         elif ver:
@@ -105,7 +106,7 @@ class QueueRow(SimpleCardWidget):
         col.addWidget(elastic(secondary(CaptionLabel(
             f"{os.path.basename(info.path)} · {size} → {shown}", self)), dest))
         lay.addLayout(col, 1)
-        self.state = secondary(BodyLabel("In attesa", self))
+        self.state = secondary(BodyLabel(tr("In attesa"), self))
         lay.addWidget(self.state)
 
     def set_running(self, frac: float) -> None:
@@ -118,19 +119,19 @@ class QueueRow(SimpleCardWidget):
         self.icon.hide()
         self.ring.show()
         self.ring.setValue(int(frac * 100))
-        self.state.setText(f"Verifica {int(frac * 100)}%")
+        self.state.setText(tr("Verifica {pct}%", pct=int(frac * 100)))
 
     def set_skipped(self) -> None:
         self.ring.hide()
         self.icon.setIcon(InfoBarIcon.SUCCESS)
         self.icon.show()
-        self.state.setText("Già estratto")
+        self.state.setText(tr("Già estratto"))
 
     def set_done(self) -> None:
         self.ring.hide()
         self.icon.setIcon(InfoBarIcon.SUCCESS)
         self.icon.show()
-        self.state.setText("Completato")
+        self.state.setText(tr("Completato"))
 
     def set_failed(self, text: str) -> None:
         self.ring.hide()
@@ -168,9 +169,9 @@ class ProgressPage(QWidget):
         self.body.setSpacing(14)
         head = QVBoxLayout()
         head.setSpacing(2)
-        self.title = TitleLabel("Nessuna estrazione in corso", view)
-        self.subtitle = secondary(BodyLabel("Aggiungi i PKG nella pagina Estrai e premi "
-                                            "«Estrai tutto».", view))
+        self.title = TitleLabel(tr("Nessuna estrazione in corso"), view)
+        self.subtitle = secondary(BodyLabel(tr("Aggiungi i PKG nella pagina Estrai e premi "
+                                               "«Estrai tutto»."), view))
         head.addWidget(self.title)
         head.addWidget(elastic(self.subtitle))
         self.body.addLayout(head)
@@ -185,7 +186,7 @@ class ProgressPage(QWidget):
         top.addWidget(self.percent)
         self.stats = secondary(BodyLabel("", self.card))
         top.addWidget(self.stats, 1, Qt.AlignVCenter)
-        self.cancelButton = PushButton(FluentIcon.CLOSE, "Annulla", self.card)
+        self.cancelButton = PushButton(FluentIcon.CLOSE, tr("Annulla"), self.card)
         self.cancelButton.clicked.connect(self.cancelRequested)
         top.addWidget(self.cancelButton, 0, Qt.AlignVCenter)
         cl.addLayout(top)
@@ -228,14 +229,14 @@ class ProgressPage(QWidget):
         self.item_bytes = 0
         self.started = time.monotonic()
         titles = ", ".join(g.title for g in plan.groups.values())
-        self.title.setText("Estrazione in corso")
+        self.title.setText(tr("Estrazione in corso"))
         self.subtitle.setText(f"{titles} → {games_dir}")
         self.subtitle.setToolTip(self.subtitle.text())
         self.card.show()
         self.cancelButton.setEnabled(True)
         self.cancelButton.show()
         self._set_fraction(0.0)
-        self.stats.setText("Preparazione…")
+        self.stats.setText(tr("Preparazione…"))
         self.fileLabel.setText("")
 
     def _set_fraction(self, frac: float) -> None:
@@ -247,7 +248,7 @@ class ProgressPage(QWidget):
         if state == "verify":
             self.current = idx
             self.rows[idx].set_verifying(0.0)
-            self.fileLabel.setText("Verifica integrità del PKG…")
+            self.fileLabel.setText(tr("Verifica integrità del PKG…"))
         elif state == "skipped":
             self.rows[idx].set_skipped()
             self._update(idx, 1.0)
@@ -263,14 +264,15 @@ class ProgressPage(QWidget):
     def on_verify(self, idx: int, done, total) -> None:
         frac = done / total if total else 1.0
         self.rows[idx].set_verifying(frac)
-        self.fileLabel.setText(f"Verifica integrità: {fmt_size(done)} / {fmt_size(total)}")
+        self.fileLabel.setText(tr("Verifica integrità: {done} / {total}", done=fmt_size(done),
+                                  total=fmt_size(total)))
 
     def on_progress(self, idx: int, done, total, name: str) -> None:
         frac_item = done / total if total else 1.0
         self.item_bytes = done
         self.rows[idx].set_running(frac_item)
         if name:
-            self.fileLabel.setText(f"Sto scrivendo: {name}")
+            self.fileLabel.setText(tr("Sto scrivendo: {name}", name=name))
         self._update(idx, frac_item)
 
     def _update(self, idx: int, frac_item: float) -> None:
@@ -279,13 +281,14 @@ class ProgressPage(QWidget):
         self._set_fraction(frac)
         elapsed = time.monotonic() - self.started
         written = self.base_bytes + self.item_bytes
-        parts = [f"{fmt_size(written)} scritti"]
+        parts = [tr("{size} scritti", size=fmt_size(written))]
         if elapsed > 1:
             parts.append(f"{fmt_size(written / elapsed)}/s")
         if 0.02 < frac < 1 and elapsed > 3:
             left = elapsed * (1 - frac) / frac
-            parts.append(f"circa {int(left // 60)} min {int(left % 60)} s rimanenti"
-                         if left >= 60 else f"circa {int(left)} s rimanenti")
+            parts.append(tr("circa {min} min {sec} s rimanenti", min=int(left // 60),
+                            sec=int(left % 60)) if left >= 60
+                         else tr("circa {sec} s rimanenti", sec=int(left)))
         self.stats.setText(" · ".join(parts))
 
     def finish(self, ok: bool, message: str = "") -> None:
@@ -293,21 +296,22 @@ class ProgressPage(QWidget):
         self.fileLabel.setText("")
         if ok:
             self._set_fraction(1.0)
-            self.title.setText("Estrazione completata")
-            self.stats.setText(f"Tempo impiegato: {int(time.monotonic() - self.started)} s")
-            bar = InfoBar(InfoBarIcon.SUCCESS, "Pronto per shadPS4",
-                          "Aggiungi la cartella dei giochi in shadPS4 e imposta la cartella DLC "
-                          "nelle sue impostazioni.",
+            self.title.setText(tr("Estrazione completata"))
+            self.stats.setText(tr("Tempo impiegato: {sec} s",
+                                   sec=int(time.monotonic() - self.started)))
+            bar = InfoBar(InfoBarIcon.SUCCESS, tr("Pronto per shadPS4"),
+                          tr("Aggiungi la cartella dei giochi in shadPS4 e imposta la cartella "
+                             "DLC nelle sue impostazioni."),
                           Qt.Horizontal, isClosable=False, duration=-1,
                           position=InfoBarPosition.NONE, parent=self)
-            btn = PushButton(FluentIcon.FOLDER, "Apri cartella", bar)
+            btn = PushButton(FluentIcon.FOLDER, tr("Apri cartella"), bar)
             btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.games_dir)))
             bar.addWidget(btn)
         else:
-            self.title.setText("Estrazione interrotta")
+            self.title.setText(tr("Estrazione interrotta"))
             if 0 <= self.current < len(self.rows):
-                self.rows[self.current].set_failed("Interrotto")
-            bar = InfoBar(InfoBarIcon.ERROR, "Errore", message, Qt.Horizontal, isClosable=False,
+                self.rows[self.current].set_failed(tr("Interrotto"))
+            bar = InfoBar(InfoBarIcon.ERROR, tr("Errore"), message, Qt.Horizontal, isClosable=False,
                           duration=-1, position=InfoBarPosition.NONE, parent=self)
         self.result_bar = bar
         self.resultLayout.addWidget(bar)

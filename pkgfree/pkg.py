@@ -22,6 +22,7 @@ from typing import Callable, Iterator, Optional
 
 from . import crypto
 from .entry_names import ENTRY_NAMES
+from .i18n import tr
 from .sfo import parse_sfo
 
 PKG_MAGIC = 0x7F434E54
@@ -161,7 +162,7 @@ _WINDOWS_INVALID = str.maketrans({c: "_" for c in '<>:"|?*'})
 
 def _safe_name(name: str) -> str:
     if not name or name in (".", "..") or "/" in name or "\\" in name or "\x00" in name:
-        raise PkgError(f"Nome file non valido nel PKG: {name!r}")
+        raise PkgError(tr("Nome file non valido nel PKG: {name}", name=repr(name)))
     if os.name == "nt":
         name = name.translate(_WINDOWS_INVALID).rstrip(" .") or "_"
     return name
@@ -204,14 +205,14 @@ class PkgFile:
         self._f.seek(offset)
         data = self._f.read(size)
         if len(data) != size:
-            raise PkgError("Fine del file inattesa: il PKG è incompleto o danneggiato")
+            raise PkgError(tr("Fine del file inattesa: il PKG è incompleto o danneggiato"))
         return data
 
     def _parse_header(self) -> None:
         hdr = self._read_at(0, 0x440)
         magic, = struct.unpack_from(">I", hdr, 0)
         if magic != PKG_MAGIC:
-            raise PkgError("Non è un file PKG PS4 valido")
+            raise PkgError(tr("Non è un file PKG PS4 valido"))
         entry_count, = struct.unpack_from(">I", hdr, 0x10)
         table_offset, = struct.unpack_from(">I", hdr, 0x18)
         content_id = hdr[0x40:0x64].split(b"\x00", 1)[0].decode("ascii", "replace")
@@ -221,7 +222,7 @@ class PkgFile:
 
         file_size = os.fstat(self._f.fileno()).st_size
         if pkg_size and pkg_size > file_size:
-            raise PkgError("Il PKG è incompleto (dimensione inferiore a quella dichiarata)")
+            raise PkgError(tr("Il PKG è incompleto (dimensione inferiore a quella dichiarata)"))
 
         self.entries: list[PkgEntry] = []
         table = self._read_at(table_offset, entry_count * 32)
@@ -269,31 +270,29 @@ class PkgFile:
         if self._dk3 is None:
             e = self.entry(ENTRY_KEYS_ID)
             if e is None:
-                raise PkgError("Il PKG non contiene la tabella delle chiavi")
+                raise PkgError(tr("Il PKG non contiene la tabella delle chiavi"))
             # seed digest (32) + 7 digests (7*32) + 7 RSA-encrypted keys (7*256); we need key #3
             enc = self._read_at(e.offset + 32 + 7 * 32 + 3 * 256, 256)
             try:
                 self._dk3 = crypto.decrypt_dk3(enc)
             except crypto.CryptoError as ex:
-                raise PkgError(
+                raise PkgError(tr(
                     "Impossibile decifrare il PKG: sono supportati solo i PKG 'fake' (fPKG). "
-                    f"({ex})"
-                ) from ex
+                    "({error})", error=ex)) from ex
         return self._dk3
 
     def _get_ekpfs(self) -> bytes:
         e = self.entry(IMAGE_KEY_ID)
         if e is None:
-            raise PkgError("Il PKG non contiene la chiave dell'immagine PFS")
+            raise PkgError(tr("Il PKG non contiene la chiave dell'immagine PFS"))
         iv_key = crypto.entry_iv_key(e.raw, self._get_dk3())
         img_key = crypto.aes_cbc_decrypt(iv_key, self._read_at(e.offset, 256))
         try:
             return crypto.decrypt_ekpfs(img_key)
         except crypto.CryptoError as ex:
-            raise PkgError(
+            raise PkgError(tr(
                 "Impossibile decifrare la chiave PFS: sono supportati solo i PKG 'fake' (fPKG). "
-                f"({ex})"
-            ) from ex
+                "({error})", error=ex)) from ex
 
     # -- sce_sys metadata ------------------------------------------------------
     def extract_sce_sys(self, dest_dir: str) -> list[str]:
@@ -327,7 +326,7 @@ class PkgFile:
     def pfs(self) -> "_PfsReader":
         if self._pfs is None:
             if not self.has_pfs:
-                raise PkgError("Il PKG non contiene file di gioco")
+                raise PkgError(tr("Il PKG non contiene file di gioco"))
             self._pfs = _PfsReader(self)
         return self._pfs
 
@@ -347,7 +346,7 @@ class PkgFile:
                 raise Cancelled()
             chunk = self._f.read(min(HASH_CHUNK, left))
             if not chunk:
-                raise PkgError("Fine del file inattesa: il PKG è incompleto o danneggiato")
+                raise PkgError(tr("Fine del file inattesa: il PKG è incompleto o danneggiato"))
             h.update(chunk)
             left -= len(chunk)
             if progress:
@@ -460,7 +459,7 @@ class _PfsReader:
         block_offsets, = struct.unpack_from("<Q", hdr, 0x18)
         data_length, = struct.unpack_from("<Q", hdr, 0x28)
         if self._block_size == 0 or self._block_size > 0x100000:
-            raise PkgError("Intestazione PFSC non valida")
+            raise PkgError(tr("Intestazione PFSC non valida"))
         n_blocks = (data_length + self._block_size - 1) // self._block_size
         self._map = array("Q")
         self._map.frombytes(self._read(self._pfsc + block_offsets, (n_blocks + 1) * 8))
@@ -472,9 +471,9 @@ class _PfsReader:
         inner_mode, = struct.unpack_from("<H", sb, 0x1C)
         inner_bs, = struct.unpack_from("<i", sb, 0x20)
         if inner_bs != self._block_size:
-            raise PkgError("Dimensione blocco PFS interna inattesa")
+            raise PkgError(tr("Dimensione blocco PFS interna inattesa"))
         if inner_mode & (PFS_MODE_SIGNED | PFS_MODE_64BIT):
-            raise PkgError(f"Formato PFS interno non supportato (mode=0x{inner_mode:X})")
+            raise PkgError(tr("Formato PFS interno non supportato (mode=0x{mode:X})", mode=inner_mode))
         self._inodes_per_block = self._block_size // INODE_SIZE_D32
         self._inode_cache: dict[int, bytes] = {}
 
@@ -498,15 +497,15 @@ class _PfsReader:
         """
         cands: list[tuple[str, Optional[crypto.XtsDecryptor]]] = []
         if not self.outer_mode & PFS_MODE_ENCRYPTED:
-            cands.append(("in chiaro", None))
+            cands.append((tr("in chiaro"), None))
         ekpfs = self._pkg._get_ekpfs()
         flag = bool(self._pkg.info.pfs_image_flags & PFS_FLAG_NEW_CRYPT)
         for new_crypt in (flag, not flag):
             data_key, tweak_key = crypto.pfs_gen_crypto_key(ekpfs, seed, new_crypt)
-            name = "chiave 'new crypt'" if new_crypt else "chiave classica"
+            name = tr("chiave 'new crypt'") if new_crypt else tr("chiave classica")
             cands.append((name, crypto.XtsDecryptor(data_key, tweak_key)))
         if self.outer_mode & PFS_MODE_ENCRYPTED:
-            cands.append(("in chiaro", None))
+            cands.append((tr("in chiaro"), None))
         return cands
 
     def _superroot_ok(self) -> bool:
@@ -546,16 +545,17 @@ class _PfsReader:
                 return off
             tried.append(name)
         flags = self._pkg.info.pfs_image_flags
-        raise PkgError(
+        raise PkgError(tr(
             "Immagine PFSC non trovata: PKG non supportato o danneggiato "
-            f"(mode=0x{self.outer_mode:X}, flags=0x{flags:016X}, "
-            f"blocco=0x{self.outer_block_size:X}, chiave valida: "
-            f"{', '.join(n for n, _ in valid) or 'nessuna'}; provate: {', '.join(tried)})")
+            "(mode=0x{mode:X}, flags=0x{flags:016X}, blocco=0x{block:X}, chiave valida: "
+            "{valid}; provate: {tried})",
+            mode=self.outer_mode, flags=flags, block=self.outer_block_size,
+            valid=", ".join(n for n, _ in valid) or tr("nessuna"), tried=", ".join(tried)))
 
     # -- inner image -------------------------------------------------------------
     def read_blocks(self, first: int, count: int) -> bytes:
         if first < 0 or first + count > self._n_blocks:
-            raise PkgError("Riferimento a blocco PFS fuori dai limiti")
+            raise PkgError(tr("Riferimento a blocco PFS fuori dai limiti"))
         bs = self._block_size
         start = self._map[first]
         raw = self._read(self._pfsc + start, self._map[first + count] - start)
@@ -571,7 +571,7 @@ class _PfsReader:
                 try:
                     block = zlib.decompress(chunk)
                 except zlib.error as ex:
-                    raise PkgError(f"Blocco compresso danneggiato ({ex})") from ex
+                    raise PkgError(tr("Blocco compresso danneggiato ({error})", error=ex)) from ex
                 if len(block) < bs:
                     block += bytes(bs - len(block))
             out += block
@@ -610,7 +610,7 @@ class _PfsReader:
             if name == "uroot" and typ == PFS_DIR:
                 uroot = ino
         if uroot is None:
-            raise PkgError("Cartella 'uroot' non trovata nel PFS")
+            raise PkgError(tr("Cartella 'uroot' non trovata nel PFS"))
         stack = [("", uroot)]
         seen = {uroot}
         while stack:

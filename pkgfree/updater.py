@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 
 from . import __version__
+from .i18n import tr
 from .installer import _version_key
 
 REPO = "Nanobuo/Pkg-free"
@@ -88,11 +89,11 @@ def fetch_latest(url: str = API_URL, timeout: float = 10) -> Release:
             data = json.load(resp)
     except urllib.error.HTTPError as ex:
         if ex.code == 404:
-            raise UpdateError("Nessuna release trovata (il repository potrebbe essere privato)."
-                              ) from ex
-        raise UpdateError(f"GitHub ha risposto con l'errore {ex.code}.") from ex
+            raise UpdateError(tr("Nessuna release trovata (il repository potrebbe essere "
+                                 "privato).")) from ex
+        raise UpdateError(tr("GitHub ha risposto con l'errore {code}.", code=ex.code)) from ex
     except (urllib.error.URLError, OSError, ValueError) as ex:
-        raise UpdateError(f"Impossibile contattare GitHub: {ex}") from ex
+        raise UpdateError(tr("Impossibile contattare GitHub: {error}", error=ex)) from ex
     return release_from_json(data)
 
 
@@ -136,7 +137,7 @@ def download(release: Release, dest: str,
              timeout: float = 30) -> str:
     """Download the release file to dest and check its SHA-256 (when GitHub provides it)."""
     if not release.asset_url:
-        raise UpdateError("Questa release non contiene il file per il tuo sistema.")
+        raise UpdateError(tr("Questa release non contiene il file per il tuo sistema."))
     h = hashlib.sha256()
     done = 0
     try:
@@ -144,7 +145,7 @@ def download(release: Release, dest: str,
             total = int(resp.headers.get("Content-Length") or release.asset_size or 0)
             while True:
                 if should_cancel and should_cancel():
-                    raise UpdateError("Aggiornamento annullato.")
+                    raise UpdateError(tr("Aggiornamento annullato."))
                 chunk = resp.read(CHUNK)
                 if not chunk:
                     break
@@ -154,15 +155,15 @@ def download(release: Release, dest: str,
                 if progress:
                     progress(done, total)
         if release.asset_size and done != release.asset_size:
-            raise UpdateError("Download incompleto.")
+            raise UpdateError(tr("Download incompleto."))
         if release.asset_sha256 and h.hexdigest() != release.asset_sha256:
-            raise UpdateError("Il file scaricato è danneggiato (SHA-256 diverso).")
+            raise UpdateError(tr("Il file scaricato è danneggiato (SHA-256 diverso)."))
     except UpdateError:
         _remove(dest)
         raise
     except (urllib.error.URLError, OSError) as ex:
         _remove(dest)
-        raise UpdateError(f"Download non riuscito: {ex}") from ex
+        raise UpdateError(tr("Download non riuscito: {error}", error=ex)) from ex
     return dest
 
 
@@ -201,7 +202,7 @@ def _apply_macos(zip_path: str, bundle: str) -> None:
         if not os.path.isdir(new_app):
             apps = [d for d in os.listdir(work) if d.endswith(".app")]
             if not apps:
-                raise UpdateError("Lo zip scaricato non contiene l'app.")
+                raise UpdateError(tr("Lo zip scaricato non contiene l'app."))
             new_app = os.path.join(work, apps[0])
         old = bundle + ".old"
         shutil.rmtree(old, ignore_errors=True)
@@ -209,7 +210,8 @@ def _apply_macos(zip_path: str, bundle: str) -> None:
         shutil.move(new_app, bundle)
         shutil.rmtree(old, ignore_errors=True)
     except (OSError, subprocess.CalledProcessError) as ex:
-        raise UpdateError(f"Installazione dell'aggiornamento non riuscita: {ex}") from ex
+        raise UpdateError(tr("Installazione dell'aggiornamento non riuscita: {error}",
+                             error=ex)) from ex
     finally:
         shutil.rmtree(work, ignore_errors=True)
         _remove(zip_path)

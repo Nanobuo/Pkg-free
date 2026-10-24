@@ -2,12 +2,14 @@
 
 import struct
 
+from .i18n import tr
+
 SFO_MAGIC = b"\x00PSF"
 
 
 def parse_sfo(data: bytes) -> dict:
     if len(data) < 20 or data[:4] != SFO_MAGIC:
-        raise ValueError("param.sfo non valido")
+        raise ValueError(tr("param.sfo non valido"))
     _, key_table, data_table, count = struct.unpack_from("<IIII", data, 4)
     result = {}
     for i in range(count):

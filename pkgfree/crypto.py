@@ -7,6 +7,7 @@ import struct
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from . import keys
+from .i18n import tr
 
 XTS_SECTOR_SIZE = 0x1000
 
@@ -19,13 +20,13 @@ def _rsa_decrypt_pkcs1v15(ciphertext: bytes, n: int, d: int) -> bytes:
     """Raw RSA decryption followed by PKCS#1 v1.5 (type 2) unpadding."""
     c = int.from_bytes(ciphertext, "big")
     if c >= n:
-        raise CryptoError("RSA ciphertext out of range")
+        raise CryptoError(tr("Testo cifrato RSA fuori intervallo"))
     em = pow(c, d, n).to_bytes(256, "big")
     if em[0] != 0 or em[1] != 2:
-        raise CryptoError("RSA padding non valido (PKG retail o chiave errata)")
+        raise CryptoError(tr("RSA padding non valido (PKG retail o chiave errata)"))
     sep = em.find(b"\x00", 2)
     if sep < 10:
-        raise CryptoError("RSA padding non valido (PKG retail o chiave errata)")
+        raise CryptoError(tr("RSA padding non valido (PKG retail o chiave errata)"))
     return em[sep + 1:]
 
 

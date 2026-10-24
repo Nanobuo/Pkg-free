@@ -8,10 +8,10 @@ from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 from qfluentwidgets import (BodyLabel, FluentIcon, IconWidget, PushButton,
                             ThemeColor, isDarkTheme, qconfig)
 
+from ..i18n import get_language, tr
+
 SECONDARY_LIGHT = QColor(96, 96, 96)
 SECONDARY_DARK = QColor(206, 206, 206)
-
-KIND_LABEL = {"game": "Gioco base", "patch": "Aggiornamento", "dlc": "DLC", "other": "Sconosciuto"}
 
 
 def fmt_size(n: float) -> str:
@@ -19,7 +19,8 @@ def fmt_size(n: float) -> str:
         if n < 1024 or unit == "GB":
             if unit == "B":
                 return f"{int(n)} B"
-            return f"{n:.1f} {unit}".replace(".", ",")
+            text = f"{n:.1f} {unit}"
+            return text.replace(".", ",") if get_language() == "it" else text
         n /= 1024
     return str(n)
 
@@ -89,10 +90,10 @@ class DropZone(QWidget):
         icon.setFixedSize(20, 20)
         lay.addWidget(icon)
         lay.addWidget(secondary(BodyLabel(
-            "Trascina qui i file .pkg (gioco, aggiornamenti, DLC, in qualsiasi ordine) oppure",
+            tr("Trascina qui i file .pkg (gioco, aggiornamenti, DLC, in qualsiasi ordine) oppure"),
             self)))
-        self.btnFiles = PushButton(FluentIcon.ADD, "Aggiungi PKG…", self)
-        self.btnFolder = PushButton(FluentIcon.FOLDER_ADD, "Aggiungi cartella…", self)
+        self.btnFiles = PushButton(FluentIcon.ADD, tr("Aggiungi PKG…"), self)
+        self.btnFolder = PushButton(FluentIcon.FOLDER_ADD, tr("Aggiungi cartella…"), self)
         self.btnFiles.clicked.connect(self.addFilesClicked)
         self.btnFolder.clicked.connect(self.addFolderClicked)
         lay.addWidget(self.btnFiles)

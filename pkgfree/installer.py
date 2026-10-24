@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 from .pkg import ICON0_ID, PkgError, PkgFile, PkgInfo, long_path
+from .i18n import tr
 from .sfo import parse_sfo
 
 LogCallback = Callable[[str], None]
@@ -95,6 +96,11 @@ def installed_version(game_dir: Optional[str]) -> Optional[str]:
     return None
 
 
+def kind_label(kind: str) -> str:
+    return {"game": tr("Gioco base"), "patch": tr("Aggiornamento"), "dlc": "DLC"}.get(
+        kind, tr("Sconosciuto"))
+
+
 def title_id_of(info: PkgInfo) -> str:
     return str(info.sfo.get("TITLE_ID") or info.title_id)
 
@@ -140,8 +146,8 @@ class TitleGroup:
         installed = installed_version(find_game_dir(games_dir, self.title_id))
         final = self.final_version
         if installed and final and _version_key(final) < _version_key(installed):
-            return (f"Sul disco è già installata la versione {installed}: dopo l'estrazione il "
-                    f"gioco tornerebbe alla {final}.")
+            return tr("Sul disco è già installata la versione {installed}: dopo l'estrazione il "
+                      "gioco tornerebbe alla {final}.", installed=installed, final=final)
         return None
 
     def warnings(self, games_dir: str) -> list[str]:
@@ -153,21 +159,19 @@ class TitleGroup:
         elif self.patches and not self.base:
             installed = installed_version(find_game_dir(games_dir, self.title_id))
             if installed and _version_key(installed) == _version_key(self.final_version):
-                out.append(f"La versione {installed} è già installata: la patch verrà "
-                           "riapplicata sopra quella esistente.")
+                out.append(tr("La versione {installed} è già installata: la patch verrà "
+                              "riapplicata sopra quella esistente.", installed=installed))
         for p in self.patches:
             if p.is_delta_patch:
-                out.append(
-                    f"{os.path.basename(p.path)} è una patch 'delta' (incrementale): non "
-                    "contiene i file completi e il risultato potrebbe non funzionare."
-                )
+                out.append(tr(
+                    "{name} è una patch 'delta' (incrementale): non contiene i file completi "
+                    "e il risultato potrebbe non funzionare.", name=os.path.basename(p.path)))
         if self.base is None and self.patches:
             existing = find_game_dir(games_dir, self.title_id)
             if not existing or not os.path.isfile(os.path.join(existing, "eboot.bin")):
-                out.append(
-                    f"Manca il gioco base e nella destinazione non c'è già una cartella "
-                    f"{self.title_id}: l'aggiornamento verrà estratto da solo."
-                )
+                out.append(tr(
+                    "Manca il gioco base e nella destinazione non c'è già una cartella "
+                    "{title_id}: l'aggiornamento verrà estratto da solo.", title_id=self.title_id))
         return out
 
 
@@ -196,14 +200,15 @@ def build_plan(infos: list[PkgInfo], games_dir: str, title_folder: bool = False)
         name = os.path.basename(info.path)
         if kind == "game":
             if group.base is not None:
-                raise PkgError(f"Più di un gioco base per {tid}: {name}")
+                raise PkgError(tr("Più di un gioco base per {tid}: {name}", tid=tid, name=name))
             group.base = info
         elif kind == "patch":
             group.patches.append(info)
         elif kind == "dlc":
             group.dlcs.append(info)
         else:
-            raise PkgError(f"Tipo di PKG non riconosciuto ({info.category or '?'}): {name}")
+            raise PkgError(tr("Tipo di PKG non riconosciuto ({category}): {name}",
+                                  category=info.category or "?", name=name))
 
     for tid, group in plan.groups.items():
         plan.warnings += [f"{tid}: {w}" for w in group.warnings(games_dir)]
@@ -463,13 +468,13 @@ def install(
         skip_upto += 1
 
     for idx, (info, dest, jpath) in enumerate(zip(items, dests, journals)):
-        label = {"game": "Gioco base", "patch": "Aggiornamento", "dlc": "DLC"}[info.kind]
+        label = kind_label(info.kind)
         ver = info.app_ver or info.version
         log(f"[{idx + 1}/{len(items)}] {label} {title_id_of(info)} v{ver}: "
             f"{os.path.basename(info.path)}")
         log(f"    -> {dest}")
         if idx < skip_upto:
-            log("    già estratto nell'esecuzione interrotta: saltato")
+            log("    " + tr("già estratto nell'esecuzione interrotta: saltato"))
             if item_status:
                 item_status(idx, "skipped")
             continue
@@ -487,13 +492,14 @@ def install(
                     should_cancel)
                 bad = [r.name for r in results if r.status == "mismatch"]
                 if bad:
-                    raise PkgError(
-                        f"{os.path.basename(info.path)} è danneggiato: le impronte SHA-256 "
-                        f"({', '.join(bad)}) non corrispondono. Scaricalo di nuovo.")
+                    raise PkgError(tr(
+                        "{name} è danneggiato: le impronte SHA-256 ({digests}) non "
+                        "corrispondono. Scaricalo di nuovo.",
+                        name=os.path.basename(info.path), digests=", ".join(bad)))
                 if all(r.status == "absent" for r in results):
-                    log("    verifica: il PKG non contiene impronte, non verificabile")
+                    log("    " + tr("verifica: il PKG non contiene impronte, non verificabile"))
                 else:
-                    log("    verifica integrità: OK")
+                    log("    " + tr("verifica integrità: OK"))
             if item_status:
                 item_status(idx, "start")
             state = states[idx]
@@ -505,11 +511,12 @@ def install(
                                           skip=state.done if partial else None,
                                           on_file_done=journal.file_done)
                     if skipped:
-                        log(f"    ripresa: {skipped / (1 << 30):.1f} GB già estratti, saltati")
+                        log("    " + tr("ripresa: {size:.1f} GB già estratti, saltati",
+                                               size=skipped / (1 << 30)))
                 else:
                     os.makedirs(dest, exist_ok=True)
                     pkg.extract_sce_sys(dest)
-                    log("    (nessun file di gioco: solo licenza/metadati)")
+                    log("    " + tr("(nessun file di gioco: solo licenza/metadati)"))
                 journal.complete()
             finally:
                 journal.close()
@@ -525,7 +532,8 @@ def install(
         for info in items:
             try:
                 remove_pkg(info.path)
-                log(f"Rimosso {os.path.basename(info.path)}")
+                log(tr("Rimosso {name}", name=os.path.basename(info.path)))
             except OSError as ex:
-                log(f"Impossibile rimuovere {os.path.basename(info.path)}: {ex}")
-    log("Completato.")
+                log(tr("Impossibile rimuovere {name}: {error}",
+                       name=os.path.basename(info.path), error=ex))
+    log(tr("Completato."))
