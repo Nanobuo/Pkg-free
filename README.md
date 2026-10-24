@@ -61,18 +61,46 @@ sfondo Mica) e supporta il **tema chiaro e scuro**.
    nella scheda.
 3. In basso scegli la **cartella giochi** (la cartella DLC si imposta in
    **Impostazioni**; se vuota si usa `<cartella giochi>\addcont`).
-4. Premi **Estrai tutto**: si apre la pagina **Avanzamento** con percentuale,
-   velocità, tempo rimanente e lo stato di ogni PKG. Il pulsante **Annulla**
-   interrompe l'operazione. I messaggi dettagliati sono nella pagina
-   **Registro**.
+4. Premi **Estrai tutto**. Prima di iniziare il programma controlla che sui
+   dischi di destinazione ci sia **spazio sufficiente** e avvisa se non basta.
+   Si apre la pagina **Avanzamento** con percentuale, velocità, tempo
+   rimanente e lo stato di ogni PKG (la percentuale compare anche nel titolo
+   della finestra). Il pulsante **Annulla** interrompe l'operazione; i
+   messaggi dettagliati sono nella pagina **Registro**.
+5. A fine estrazione, se stai usando un'altra finestra, arriva una
+   **notifica di sistema**.
 
-**Tema chiaro/scuro**: pulsante **Cambia tema** nel menu laterale (in basso),
-oppure **Impostazioni → Aspetto → Tema** con le opzioni *Chiaro*, *Scuro* e
-*Usa impostazione di sistema* (predefinita). La scelta viene ricordata.
+**Ripresa automatica**: se un'estrazione si interrompe (annullata, PC spento,
+disco pieno), avviandola di nuovo con gli stessi PKG riparte da dove si era
+fermata: i file già scritti e i PKG già completati vengono saltati.
 
-| Avanzamento (scuro) | Completato (scuro) | Impostazioni (chiaro) |
-|---|---|---|
-| ![](docs/avanzamento-scuro.png) | ![](docs/completato-scuro.png) | ![](docs/impostazioni-chiaro.png) |
+**Libreria**: elenca i giochi già presenti nella cartella giochi con icona,
+versione installata, eventuale cartella di aggiornamento separata e DLC.
+
+**Impostazioni → Estrazione** permette inoltre di:
+
+- **verificare i PKG** prima di estrarli (impronte SHA-256 contenute nel PKG:
+  scopre i download danneggiati; rilegge tutto il PKG, circa un minuto in più
+  ogni 50 GB);
+- **spostare i PKG nel Cestino** al termine, solo se l'estrazione di tutti i
+  PKG è riuscita;
+- disattivare la notifica di fine estrazione.
+
+**Tema e lingua**: pulsante **Cambia tema** nel menu laterale (in basso),
+oppure **Impostazioni → Aspetto**: tema *Chiaro*, *Scuro* o di sistema e
+lingua *Italiano*, *English* o automatica (la lingua cambia al riavvio).
+
+**Aggiornamenti**: all'avvio il programma controlla se su GitHub c'è una nuova
+release (disattivabile in **Impostazioni → Aggiornamenti**, dove c'è anche
+**Controlla ora**). Se c'è, un avviso permette di leggere le novità e di
+**aggiornare con un clic**: il file viene scaricato, verificato (SHA-256),
+sostituito e il programma si riavvia. Funziona con le versioni scaricate dalle
+release (exe di Windows, AppImage, app macOS) e solo se il repository è
+pubblico.
+
+| Avanzamento (scuro) | Completato (scuro) | Libreria (scuro) | Impostazioni (chiaro) |
+|---|---|---|---|
+| ![](docs/avanzamento-scuro.png) | ![](docs/completato-scuro.png) | ![](docs/libreria-scuro.png) | ![](docs/impostazioni-chiaro.png) |
 
 Risultato:
 
@@ -114,7 +142,16 @@ pkgfree-cli info gioco.pkg patch.pkg --files
 pkgfree-cli install gioco.pkg patch_1.01.pkg patch_1.05.pkg dlc1.pkg -o D:\PS4\Giochi
 pkgfree-cli install patch.pkg -o D:\PS4\Giochi --separate-update
 pkgfree-cli install dlc.pkg -o D:\PS4\Giochi --addons C:\shadPS4\user\addcont
+pkgfree-cli install gioco.pkg -o D:\PS4\Giochi --verify --delete-pkg
+pkgfree-cli verify gioco.pkg patch.pkg
 ```
+
+Opzioni di `install`: `--verify` (verifica SHA-256 prima di estrarre),
+`--delete-pkg` (cancella i PKG se tutto è riuscito), `--no-resume` (ignora
+un'estrazione interrotta e riparte da zero), `--force` (procede anche con poco
+spazio libero o se verrebbe installata una versione più vecchia),
+`--separate-update`, `--no-title-folder`. La lingua segue quella del sistema;
+per sceglierla: `PKGFREE_LANG=en` oppure `PKGFREE_LANG=it`.
 
 ## Note e limiti
 
@@ -131,6 +168,9 @@ pkgfree-cli install dlc.pkg -o D:\PS4\Giochi --addons C:\shadPS4\user\addcont
   conferma; se la patch è la stessa già installata lo segnala nella scheda.
   Da riga di comando un declassamento viene rifiutato senza `--force`.
 - Velocità indicativa: decine di MB/s (decifratura AES-XTS + decompressione).
+- Per la ripresa il programma lascia, durante l'estrazione, un piccolo file
+  nascosto `.pkgfree-….resume` nella cartella del gioco; viene cancellato
+  quando l'estrazione finisce.
 
 ## Compilare da sorgente
 
@@ -167,10 +207,12 @@ Senza compilare: `python -m pkgfree` (GUI) oppure `python -m pkgfree install ...
 | `pkgfree/pkg.py` | lettura PKG, decifratura PFS (AES-XTS), decompressione PFSC, estrazione |
 | `pkgfree/crypto.py` | RSA / AES-CBC / HMAC / XTS |
 | `pkgfree/keys.py` | chiavi RSA pubbliche per fPKG |
-| `pkgfree/installer.py` | unione gioco + patch + DLC |
-| `pkgfree/gui/` | interfaccia Fluent: `extract_page.py` (schede per gioco), `progress_page.py` (avanzamento + thread di estrazione), `settings_page.py` (impostazioni, registro), `window.py`, `config.py` |
+| `pkgfree/installer.py` | unione gioco + patch + DLC, ripresa, spazio libero, libreria |
+| `pkgfree/updater.py` | aggiornamento dall'app (release GitHub) |
+| `pkgfree/i18n.py`, `pkgfree/i18n_en.py` | traduzione inglese |
+| `pkgfree/gui/` | interfaccia Fluent: `extract_page.py` (schede per gioco), `library_page.py`, `progress_page.py` (avanzamento + thread di estrazione), `settings_page.py` (impostazioni, registro), `update_ui.py`, `window.py`, `config.py` |
 | `pkgfree/cli.py` | riga di comando |
-| `tests/` | test con PKG sintetici generati al volo, più uno smoke test della GUI |
+| `tests/` | test con PKG sintetici generati al volo (estrazione, ripresa, verifica, aggiornamento, traduzioni) più uno smoke test della GUI |
 | `packaging/linux/` | script e file per l'AppImage (`build_appimage.sh`, `AppRun`, `.desktop`) |
 | `assets/pkgfree.png` | icona dell'app |
 

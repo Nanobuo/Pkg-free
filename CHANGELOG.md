@@ -3,6 +3,24 @@
 Ogni release pubblica come descrizione la sezione della propria versione.
 Prima di creare una release aggiungi qui una sezione `## vX.Y.Z`.
 
+## v1.4.0
+
+- **Ripresa automatica**: un'estrazione interrotta riparte da dove si era
+  fermata, saltando i file e i PKG già completati.
+- **Controllo dello spazio libero** prima di estrarre, con avviso se un disco
+  non basta.
+- **Libreria**: nuova pagina con i giochi già estratti, la versione installata
+  e i DLC.
+- **Verifica dei PKG** (opzionale): controlla le impronte SHA-256 per scoprire
+  i download danneggiati. Anche da riga di comando: `verify` e `--verify`.
+- **PKG nel Cestino** al termine (opzionale), solo se tutto è riuscito;
+  da riga di comando `--delete-pkg`.
+- **Notifica** di fine estrazione e percentuale nel titolo della finestra.
+- **Aggiornamento dall'app**: avviso quando esce una nuova versione, download
+  verificato e riavvio automatico.
+- **Interfaccia in inglese**: lingua scelta in *Impostazioni → Aspetto* oppure
+  automatica.
+
 ## v1.3.0
 
 - **Cartella con il nome del gioco**: i giochi vengono estratti in
