@@ -11,12 +11,18 @@ on:
         description: "Crea una release con questo tag (es. v1.2.0); vuoto = solo build"
         required: false
         default: ""
+      notes_only:
+        description: "Solo note: aggiorna la descrizione di una release esistente da CHANGELOG.md, senza ricompilare"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
 
 jobs:
   windows:
+    if: ${{ !inputs.notes_only }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -52,6 +58,7 @@ jobs:
           path: release/
 
   linux:
+    if: ${{ !inputs.notes_only }}
     # The oldest available Ubuntu: the AppImage runs on distros with this glibc or newer.
     runs-on: ubuntu-22.04
     steps:
@@ -92,6 +99,7 @@ jobs:
           path: dist/PkgFree-x86_64.AppImage
 
   macos:
+    if: ${{ !inputs.notes_only }}
     # Apple Silicon (arm64) runner.
     runs-on: macos-15
     steps:
@@ -129,7 +137,7 @@ jobs:
   release:
     # On a pushed v* tag, or from "Run workflow" with a release_tag (the tag is
     # then created on the commit that was built).
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '' && !inputs.notes_only)
     needs: [windows, linux, macos]
     runs-on: ubuntu-latest
     env:
@@ -180,3 +188,25 @@ jobs:
           body_path: release-notes.md
           files: release/*
           fail_on_unmatched_files: true
+
+  release-notes:
+    # "Run workflow" with notes_only: replace the description of an existing
+    # release with its CHANGELOG.md section; builds and assets are untouched.
+    if: github.event_name == 'workflow_dispatch' && inputs.notes_only && inputs.release_tag != ''
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.release_tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Update release notes
+        run: |
+          awk -v tag="## $TAG" '$0 == tag {on=1; next} /^## / {on=0} on' CHANGELOG.md \
+            | sed -e '/./,$!d' > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "::error::Manca la sezione '## $TAG' in CHANGELOG.md"
+            exit 1
+          fi
+          cat release-notes.md
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file release-notes.md

@@ -20,7 +20,9 @@ di *Build* → artefatti). Creando un tag `v*` (es. `v1.2.0`) viene pubblicata
 una release con un file per ogni sistema. In alternativa, senza creare il tag a mano: **Actions → Build →
 Run workflow**, scrivendo la versione (es. `v1.2.0`) nel campo del tag; deve
 corrispondere a `__version__` in `pkgfree/__init__.py`. La descrizione della release è la
-sezione `## vX.Y.Z` di [`CHANGELOG.md`](CHANGELOG.md), che va scritta prima.
+sezione `## vX.Y.Z` di [`CHANGELOG.md`](CHANGELOG.md), che va scritta prima. Per correggere
+la descrizione di una release già pubblicata, modifica la sua sezione e avvia
+*Run workflow* con il tag e l'opzione **Solo note** (non ricompila nulla).
 
 | Sistema | File |
 |---|---|
