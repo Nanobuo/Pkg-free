@@ -19,6 +19,12 @@ class Config(QConfig):
     lastDir = ConfigItem("Paths", "LastDir", "")
     mergeUpdates = ConfigItem("Extraction", "MergeUpdates", True, BoolValidator())
     titleFolder = ConfigItem("Extraction", "TitleFolder", True, BoolValidator())
+    verifyPkgs = ConfigItem("Extraction", "VerifyPkgs", False, BoolValidator())
+    deletePkgs = ConfigItem("Extraction", "DeletePkgs", False, BoolValidator())
+    notifyDone = ConfigItem("Extraction", "NotifyDone", True, BoolValidator())
+    checkUpdates = ConfigItem("Updates", "CheckAtStartup", True, BoolValidator())
+    language = OptionsConfigItem("General", "Language", "auto",
+                                 OptionsValidator(["auto", "it", "en"]), restart=True)
 
     def addons_dir_for(self, games_dir: str) -> str:
         return self.get(self.addonsDir) or os.path.join(games_dir, "addcont")

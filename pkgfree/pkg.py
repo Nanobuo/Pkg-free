@@ -11,6 +11,7 @@ LibOrbisPkg. Layout of a PKG:
 
 from __future__ import annotations
 
+import hashlib
 import os
 import struct
 import sys
@@ -58,6 +59,16 @@ CONTENT_FLAG_DELTA_PATCH = 0x41000000
 READ_BATCH_BLOCKS = 64
 
 ProgressCallback = Callable[[int, int, str], None]
+# (bytes_done, bytes_total)
+ByteProgress = Callable[[int, int], None]
+
+HASH_CHUNK = 8 << 20
+
+
+@dataclass
+class DigestCheck:
+    name: str     # "header", "body" or "pfs"
+    status: str   # "ok", "mismatch" or "absent" (digest not stored in the PKG)
 
 
 class PkgError(Exception):
@@ -325,21 +336,76 @@ class PkgFile:
             return []
         return list(self.pfs().walk())
 
+    # -- integrity -------------------------------------------------------------
+    def _hash_range(self, offset: int, size: int, progress, base: int, total: int,
+                    should_cancel) -> bytes:
+        h = hashlib.sha256()
+        self._f.seek(offset)
+        left = size
+        while left > 0:
+            if should_cancel and should_cancel():
+                raise Cancelled()
+            chunk = self._f.read(min(HASH_CHUNK, left))
+            if not chunk:
+                raise PkgError("Fine del file inattesa: il PKG è incompleto o danneggiato")
+            h.update(chunk)
+            left -= len(chunk)
+            if progress:
+                progress(base + size - left, total)
+        return h.digest()
+
+    def verify(
+        self,
+        progress: Optional[ByteProgress] = None,
+        should_cancel: Optional[Callable[[], bool]] = None,
+    ) -> list[DigestCheck]:
+        """Check the SHA-256 digests stored in the PKG header.
+
+        header: bytes 0..0xFE0; body: the metadata entries; pfs: the whole game
+        image (reads the entire file). An all-zero digest means "not stored".
+        """
+        hdr = self._read_at(0, 0x1000)
+        body_off, body_size = struct.unpack_from(">QQ", hdr, 0x20)
+        checks = [
+            ("header", 0, 0xFE0, hdr[0xFE0:0x1000]),
+            ("body", body_off, body_size, hdr[0x160:0x180]),
+            ("pfs", self.info.pfs_image_offset, self.info.pfs_image_size, hdr[0x440:0x460]),
+        ]
+        todo = [c for c in checks if any(c[3]) and c[2] > 0]
+        total = sum(c[2] for c in todo)
+        done = 0
+        results = []
+        for name, off, size, expected in checks:
+            if (name, off, size, expected) not in todo:
+                results.append(DigestCheck(name, "absent"))
+                continue
+            digest = self._hash_range(off, size, progress, done, total, should_cancel)
+            done += size
+            results.append(DigestCheck(name, "ok" if digest == expected else "mismatch"))
+        return results
+
+    # -- extraction ----------------------------------------------------------------
     def extract(
         self,
         dest_dir: str,
         progress: Optional[ProgressCallback] = None,
         should_cancel: Optional[Callable[[], bool]] = None,
-    ) -> None:
+        skip: Optional[set] = None,
+        on_file_done: Optional[Callable[[str], None]] = None,
+    ) -> int:
         """Extract the game files (uroot) and sce_sys metadata into dest_dir.
 
         Existing files are overwritten, so extracting an update on top of the base
-        game produces a merged, up-to-date folder.
+        game produces a merged, up-to-date folder. Files listed in ``skip`` that
+        already exist with the right size are left alone (resuming an interrupted
+        extraction); ``on_file_done`` is called with each file finished. Returns
+        the number of bytes skipped.
         """
         os.makedirs(long_path(dest_dir), exist_ok=True)
         nodes = self.list_files()
         total = sum(n.size for n in nodes if not n.is_dir)
         done = 0
+        skipped = 0
         for node in nodes:
             if should_cancel and should_cancel():
                 raise Cancelled()
@@ -347,6 +413,14 @@ class PkgFile:
             if node.is_dir:
                 os.makedirs(long_path(target), exist_ok=True)
                 continue
+            if skip and node.path in skip:
+                try:
+                    if os.path.getsize(long_path(target)) == node.size:
+                        done += node.size
+                        skipped += node.size
+                        continue
+                except OSError:
+                    pass
             os.makedirs(long_path(os.path.dirname(target)), exist_ok=True)
             if progress:
                 progress(done, total, node.path)
@@ -358,10 +432,13 @@ class PkgFile:
                     done += len(chunk)
                     if progress:
                         progress(done, total, node.path)
+            if on_file_done:
+                on_file_done(node.path)
         # Header entries last: an update's param.sfo must win over the PFS copy.
         self.extract_sce_sys(dest_dir)
         if progress:
             progress(total, total, "")
+        return skipped
 
 
 class _PfsReader:

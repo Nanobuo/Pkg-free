@@ -151,6 +151,7 @@ def _build_pfsc(inner: bytes) -> bytes:
 def build_pkg(path: str, content_id: str, sfo: dict, files: dict,
               content_flags: int = 0, with_pfs: bool = True, new_crypt: bool = False,
               icon: bytes = b"ICONDATA", flag_new_crypt=None, outer_superroot: bool = True,
+              digests: bool = True,
               pfsc_offset: int = 0x20000) -> bytes:
     """flag_new_crypt: header flag value (default: same as new_crypt, like a correct PKG)."""
     dk3 = os.urandom(32)
@@ -227,6 +228,13 @@ def build_pkg(path: str, content_id: str, sfo: dict, files: dict,
         buf[offsets[eid]:offsets[eid] + sizes[eid]] = data[eid]
     if with_pfs:
         buf[pfs_off:pfs_off + pfs_size] = outer
+    # Body = entry table + entry data; digests as computed by real PKG tools.
+    struct.pack_into(">QQ", buf, 0x20, table_off, cur - table_off)
+    if digests:
+        buf[0x160:0x180] = hashlib.sha256(buf[table_off:cur]).digest()
+        if with_pfs:
+            buf[0x440:0x460] = hashlib.sha256(buf[pfs_off:pfs_off + pfs_size]).digest()
+        buf[0xFE0:0x1000] = hashlib.sha256(buf[0:0xFE0]).digest()
     with open(path, "wb") as f:
         f.write(buf)
     return np_plain

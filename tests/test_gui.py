@@ -31,6 +31,7 @@ class GuiSmoke(unittest.TestCase):
             from qfluentwidgets import Theme, setTheme
             from pkgfree.gui.config import cfg, load_config
             load_config()
+            cfg.set(cfg.checkUpdates, False)
             cfg.set(cfg.gamesDir, os.path.join(d, "games"))
             cid = "UP0000-CUSA00007_00-GAMEGAMEGAME0000"
             build_pkg(os.path.join(d, "base.pkg"), cid,

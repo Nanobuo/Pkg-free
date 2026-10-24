@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QFileDialog, QVBoxLayout, QWidget
 from qfluentwidgets import (FluentIcon, HyperlinkCard, OptionsSettingCard, PlainTextEdit,
@@ -26,6 +26,8 @@ class ItalianSwitchSettingCard(SwitchSettingCard):
 
 
 class SettingsPage(QWidget):
+    checkUpdatesRequested = Signal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("settingsPage")
@@ -53,29 +55,50 @@ class SettingsPage(QWidget):
         self.addonsCard = PushSettingCard("Scegli cartella", FluentIcon.LIBRARY, "Cartella DLC",
                                           "", paths)
         self.addonsCard.clicked.connect(self._choose_addons)
-        self.mergeCard = ItalianSwitchSettingCard(
-            FluentIcon.SYNC, "Unisci gli aggiornamenti al gioco",
-            "Se disattivato, gli aggiornamenti vengono estratti a parte in <TITLE_ID>-UPDATE",
-            configItem=cfg.mergeUpdates, parent=paths)
-        self.mergeCard.setValue(cfg.get(cfg.mergeUpdates))
-        self.titleCard = ItalianSwitchSettingCard(
-            FluentIcon.TAG, "Cartella con il nome del gioco",
-            "Es. Giochi\\Driveclub\\CUSA00003: shadPS4 trova il gioco anche nella sottocartella. "
-            "I DLC restano in addcont\\<TITLE_ID>.",
-            configItem=cfg.titleFolder, parent=paths)
-        self.titleCard.setValue(cfg.get(cfg.titleFolder))
         paths.addSettingCard(self.gamesCard)
         paths.addSettingCard(self.addonsCard)
-        paths.addSettingCard(self.mergeCard)
-        paths.addSettingCard(self.titleCard)
         lay.addWidget(paths)
+
+        extraction = SettingCardGroup("Estrazione", view)
+        self.mergeCard = self._switch(
+            extraction, cfg.mergeUpdates, FluentIcon.SYNC, "Unisci gli aggiornamenti al gioco",
+            "Se disattivato, gli aggiornamenti vengono estratti a parte in <TITLE_ID>-UPDATE")
+        self.titleCard = self._switch(
+            extraction, cfg.titleFolder, FluentIcon.TAG, "Cartella con il nome del gioco",
+            "Es. Giochi\\Driveclub\\CUSA00003: shadPS4 trova il gioco anche nella sottocartella. "
+            "I DLC restano in addcont\\<TITLE_ID>.")
+        self.verifyCard = self._switch(
+            extraction, cfg.verifyPkgs, FluentIcon.CERTIFICATE, "Verifica i PKG prima di estrarli",
+            "Controlla le impronte SHA-256 per scoprire download danneggiati. Rilegge tutto il "
+            "PKG: circa un minuto in più ogni 50 GB.")
+        self.deleteCard = self._switch(
+            extraction, cfg.deletePkgs, FluentIcon.DELETE, "Sposta i PKG nel Cestino al termine",
+            "Solo se l'estrazione di tutti i PKG è riuscita.")
+        self.notifyCard = self._switch(
+            extraction, cfg.notifyDone, FluentIcon.RINGER, "Notifica a fine estrazione",
+            "Mostra una notifica di sistema se nel frattempo stai usando un'altra finestra.")
+        lay.addWidget(extraction)
 
         look = SettingCardGroup("Aspetto", view)
         self.themeCard = OptionsSettingCard(
             cfg.themeMode, FluentIcon.BRUSH, "Tema", "Chiaro, scuro o come Windows",
             texts=["Chiaro", "Scuro", "Usa impostazione di sistema"], parent=look)
+        self.languageCard = OptionsSettingCard(
+            cfg.language, FluentIcon.LANGUAGE, "Lingua", "Si applica al prossimo avvio",
+            texts=["Automatica (lingua del sistema)", "Italiano", "English"], parent=look)
         look.addSettingCard(self.themeCard)
+        look.addSettingCard(self.languageCard)
         lay.addWidget(look)
+
+        updates = SettingCardGroup("Aggiornamenti", view)
+        self.updateSwitch = self._switch(
+            updates, cfg.checkUpdates, FluentIcon.UPDATE, "Controlla gli aggiornamenti all'avvio",
+            "Cerca una nuova versione su GitHub quando apri il programma.")
+        self.updateCard = PushSettingCard("Controlla ora", FluentIcon.SYNC, "Versione installata",
+                                          f"PKG Free {__version__}", updates)
+        self.updateCard.clicked.connect(self.checkUpdatesRequested)
+        updates.addSettingCard(self.updateCard)
+        lay.addWidget(updates)
 
         about = SettingCardGroup("Informazioni", view)
         about.addSettingCard(HyperlinkCard(
@@ -87,6 +110,16 @@ class SettingsPage(QWidget):
         cfg.gamesDir.valueChanged.connect(lambda _: self._refresh())
         cfg.addonsDir.valueChanged.connect(lambda _: self._refresh())
         self._refresh()
+
+    @staticmethod
+    def _switch(group, item, icon, title, content):
+        card = ItalianSwitchSettingCard(icon, title, content, configItem=item, parent=group)
+        card.setValue(cfg.get(item))
+        group.addSettingCard(card)
+        return card
+
+    def set_update_status(self, text: str) -> None:
+        self.updateCard.setContent(text)
 
     def _refresh(self) -> None:
         games = cfg.get(cfg.gamesDir)

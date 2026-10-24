@@ -51,6 +51,14 @@ def _cmd_install(args) -> int:
         print("ERRORE: verrebbe installata una versione più vecchia di quella presente. "
               "Usa --force per procedere comunque.", file=sys.stderr)
         return 1
+    shortages = installer.check_space(plan, games, addons, args.separate_update)
+    for sh in shortages:
+        print(f"ATTENZIONE: spazio insufficiente su {sh.path}: servono "
+              f"{_gb(sh.needed)}, liberi {_gb(sh.free)}.")
+    if shortages and not args.force:
+        print("ERRORE: spazio su disco insufficiente. Libera spazio o usa --force.",
+              file=sys.stderr)
+        return 1
 
     last = [0.0]
 
@@ -66,8 +74,39 @@ def _cmd_install(args) -> int:
             sys.stdout.write("\n")
         sys.stdout.flush()
 
-    installer.install(plan, games, addons, args.separate_update, log=print, progress=progress)
+    def verify_progress(idx, done, total):
+        now = time.monotonic()
+        if now - last[0] < 0.2 and done != total:
+            return
+        last[0] = now
+        pct = 100 * done // total if total else 100
+        sys.stdout.write(f"\r    verifica {pct:3d}%")
+        if done == total:
+            sys.stdout.write("\n")
+        sys.stdout.flush()
+
+    installer.install(plan, games, addons, args.separate_update, log=print, progress=progress,
+                      resume=not args.no_resume, verify=args.verify,
+                      verify_progress=verify_progress,
+                      remove_pkg=os.remove if args.delete_pkg else None)
     return 0
+
+
+def _gb(n: int) -> str:
+    return f"{n / (1 << 30):.1f} GB"
+
+
+def _cmd_verify(args) -> int:
+    bad = False
+    for path in args.pkg:
+        with PkgFile(path) as pkg:
+            print(path)
+            for check in pkg.verify():
+                label = {"ok": "OK", "mismatch": "NON CORRISPONDE",
+                         "absent": "assente (non verificabile)"}[check.status]
+                print(f"  {check.name:<7} {label}")
+                bad |= check.status == "mismatch"
+    return 2 if bad else 0
 
 
 def main(argv=None) -> int:
@@ -85,6 +124,10 @@ def main(argv=None) -> int:
                         help="mostra dettagli tecnici (utili per segnalare problemi)")
     p_info.set_defaults(func=_cmd_info)
 
+    p_ver = sub.add_parser("verify", help="verifica l'integrità (SHA-256) di uno o più PKG")
+    p_ver.add_argument("pkg", nargs="+")
+    p_ver.set_defaults(func=_cmd_verify)
+
     p_inst = sub.add_parser("install", help="estrae e unisce gioco base, aggiornamenti e DLC")
     p_inst.add_argument("pkg", nargs="+", help="file PKG (in qualsiasi ordine)")
     p_inst.add_argument("-o", "--output", required=True, help="cartella dei giochi")
@@ -94,7 +137,14 @@ def main(argv=None) -> int:
     p_inst.add_argument("--no-title-folder", action="store_true",
                         help="estrai in <output>/<TITLE_ID> invece di <output>/<titolo>/<TITLE_ID>")
     p_inst.add_argument("--force", action="store_true",
-                        help="procedi anche se sul disco c'è una versione più recente")
+                        help="procedi anche se sul disco c'è una versione più recente "
+                             "o lo spazio libero non basta")
+    p_inst.add_argument("--verify", action="store_true",
+                        help="verifica le impronte SHA-256 di ogni PKG prima di estrarlo")
+    p_inst.add_argument("--delete-pkg", action="store_true",
+                        help="cancella i PKG dopo un'estrazione completata senza errori")
+    p_inst.add_argument("--no-resume", action="store_true",
+                        help="non riprendere un'estrazione interrotta: estrai tutto da capo")
     p_inst.set_defaults(func=_cmd_install)
 
     args = parser.parse_args(argv)

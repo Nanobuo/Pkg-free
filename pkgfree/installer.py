@@ -8,12 +8,14 @@ Resulting layout::
 
 from __future__ import annotations
 
+import json
 import os
 import re
+import shutil
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
-from .pkg import ICON0_ID, PkgError, PkgFile, PkgInfo
+from .pkg import ICON0_ID, PkgError, PkgFile, PkgInfo, long_path
 from .sfo import parse_sfo
 
 LogCallback = Callable[[str], None]
@@ -224,6 +226,205 @@ def target_dir(info: PkgInfo, games_dir: str, addons_dir: str, separate_update: 
     return game_dir
 
 
+# -- library ---------------------------------------------------------------------
+
+@dataclass
+class LibraryEntry:
+    title: str
+    title_id: str
+    path: str                  # the game folder
+    version: str               # installed APP_VER, update folder included
+    update_dir: Optional[str]  # separate <game>-UPDATE / -patch folder, if any
+    icon: Optional[str]        # path of icon0.png
+    dlcs: list[str] = field(default_factory=list)
+
+
+def _read_sfo_file(path: str) -> dict:
+    try:
+        with open(path, "rb") as f:
+            return parse_sfo(f.read())
+    except (OSError, ValueError):
+        return {}
+
+
+def scan_library(games_dir: str, addons_dir: str, max_depth: int = 2) -> list[LibraryEntry]:
+    """Games already extracted in games_dir (up to max_depth folders down)."""
+    found: list[LibraryEntry] = []
+
+    def visit(folder: str, depth: int) -> None:
+        try:
+            entries = sorted(os.scandir(folder), key=lambda e: e.name.lower())
+        except OSError:
+            return
+        for entry in entries:
+            if not entry.is_dir() or entry.name.startswith("."):
+                continue
+            if entry.name.endswith(("-UPDATE", "-patch")):
+                continue
+            sfo_path = os.path.join(entry.path, "sce_sys", "param.sfo")
+            if os.path.isfile(os.path.join(entry.path, "eboot.bin")) and os.path.isfile(sfo_path):
+                found.append(_library_entry(entry.path, addons_dir))
+            elif depth < max_depth:
+                visit(entry.path, depth + 1)
+
+    if games_dir and os.path.isdir(games_dir):
+        visit(games_dir, 1)
+    found.sort(key=lambda e: (e.title.lower(), e.title_id))
+    return found
+
+
+def _library_entry(path: str, addons_dir: str) -> LibraryEntry:
+    update_dir = next((d for d in (f"{path}-UPDATE", f"{path}-patch")
+                       if os.path.isfile(os.path.join(d, "sce_sys", "param.sfo"))), None)
+    base_sfo = _read_sfo_file(os.path.join(path, "sce_sys", "param.sfo"))
+    sfo = _read_sfo_file(os.path.join(update_dir, "sce_sys", "param.sfo")) if update_dir else {}
+    title_id = str(base_sfo.get("TITLE_ID") or os.path.basename(path))
+    title = str(sfo.get("TITLE") or base_sfo.get("TITLE") or title_id)
+    icon = None
+    for folder in filter(None, (update_dir, path)):
+        candidate = os.path.join(folder, "sce_sys", "icon0.png")
+        if os.path.isfile(candidate):
+            icon = candidate
+            break
+    dlcs = []
+    dlc_root = os.path.join(addons_dir, title_id) if addons_dir else ""
+    if dlc_root and os.path.isdir(dlc_root):
+        for entry in sorted(os.scandir(dlc_root), key=lambda e: e.name):
+            if entry.is_dir():
+                dlc_sfo = _read_sfo_file(os.path.join(entry.path, "sce_sys", "param.sfo"))
+                dlcs.append(str(dlc_sfo.get("TITLE") or entry.name))
+    return LibraryEntry(title, title_id, path, installed_version(path) or "", update_dir,
+                        icon, dlcs)
+
+
+# -- resuming ------------------------------------------------------------------
+
+JOURNAL_COMPLETE = "COMPLETE"
+
+
+def plan_signature(plan: Plan) -> list:
+    """Identifies a plan, so a resume only happens for the same set of PKGs."""
+    sig = []
+    for info in plan.all_items():
+        try:
+            size = os.path.getsize(info.path)
+        except OSError:
+            size = -1
+        sig.append([os.path.basename(info.path), size])
+    return sig
+
+
+def journal_path(dest: str, info: PkgInfo) -> str:
+    ver = info.app_ver or info.version or "0"
+    name = re.sub(r"[^A-Za-z0-9_.-]", "_", f"{info.content_id}-{ver}")
+    return os.path.join(dest, f".pkgfree-{name}.resume")
+
+
+@dataclass
+class JournalState:
+    signature: list
+    done: set
+    complete: bool
+
+
+def read_journal(path: str) -> Optional[JournalState]:
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+        header = json.loads(lines[0])
+    except (OSError, ValueError, IndexError):
+        return None
+    done = {line[2:] for line in lines[1:] if line.startswith("F ")}
+    return JournalState(header.get("plan", []), done, JOURNAL_COMPLETE in lines[1:])
+
+
+class Journal:
+    """Append-only record of the files of one PKG already written to disk."""
+
+    def __init__(self, path: str, signature: list, keep: bool):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        self.path = path
+        if keep and os.path.exists(path):
+            self._f = open(path, "a", encoding="utf-8")
+        else:
+            self._f = open(path, "w", encoding="utf-8")
+            self._f.write(json.dumps({"plan": signature}) + "\n")
+            self._f.flush()
+
+    def file_done(self, rel_path: str) -> None:
+        self._f.write(f"F {rel_path}\n")
+        self._f.flush()
+
+    def complete(self) -> None:
+        self._f.write(JOURNAL_COMPLETE + "\n")
+        self._f.close()
+
+    def close(self) -> None:
+        if not self._f.closed:
+            self._f.close()
+
+
+# -- free space ------------------------------------------------------------------
+
+@dataclass
+class SpaceShortage:
+    path: str     # a folder on the disk that is too small
+    needed: int   # bytes the extraction will add
+    free: int     # bytes currently free
+
+
+def _existing_ancestor(path: str) -> str:
+    path = os.path.abspath(path)
+    while not os.path.exists(path):
+        parent = os.path.dirname(path)
+        if parent == path:
+            break
+        path = parent
+    return path
+
+
+def space_needed(plan: Plan, games_dir: str, addons_dir: str,
+                 separate_update: bool) -> dict:
+    """Bytes each destination disk must gain: {folder on that disk: bytes}.
+
+    Files written twice (an update replacing a base file) count once, with their
+    final size; files already on disk count only for the size difference.
+    """
+    final_sizes: dict[str, int] = {}
+    for info in plan.all_items():
+        dest = plan.target_dir(info, games_dir, addons_dir, separate_update)
+        with PkgFile(info.path) as pkg:
+            for node in pkg.list_files():
+                if not node.is_dir:
+                    final_sizes[os.path.join(dest, *node.path.split("/"))] = node.size
+    per_disk: dict = {}
+    for target, size in final_sizes.items():
+        try:
+            size -= os.path.getsize(long_path(target))
+        except OSError:
+            pass
+        anchor = _existing_ancestor(os.path.dirname(target))
+        try:
+            dev = os.stat(anchor).st_dev
+        except OSError:
+            dev = anchor
+        entry = per_disk.setdefault(dev, [anchor, 0])
+        entry[1] += max(size, 0)
+    return {anchor: needed for anchor, needed in per_disk.values()}
+
+
+def check_space(plan: Plan, games_dir: str, addons_dir: str,
+                separate_update: bool) -> list[SpaceShortage]:
+    shortages = []
+    for anchor, needed in space_needed(plan, games_dir, addons_dir, separate_update).items():
+        free = shutil.disk_usage(anchor).free
+        if needed > free:
+            shortages.append(SpaceShortage(anchor, needed, free))
+    return shortages
+
+
+# -- extraction -------------------------------------------------------------------
+
 def install(
     plan: Plan,
     games_dir: str,
@@ -233,30 +434,98 @@ def install(
     progress: Optional[InstallProgress] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
     item_status: Optional[Callable[[int, str], None]] = None,
+    resume: bool = True,
+    verify: bool = False,
+    verify_progress: Optional[Callable[[int, int, int], None]] = None,
+    remove_pkg: Optional[Callable[[str], None]] = None,
 ) -> None:
-    """Extract every PKG of the plan. item_status(index, "start"|"done") marks each step."""
+    """Extract every PKG of the plan.
+
+    item_status(index, state) reports "verify", "start", "skipped" and "done".
+    resume: continue an interrupted run of the same plan (see Journal).
+    verify: check the PKG digests first (verify_progress(index, done, total)).
+    remove_pkg: called for each PKG once the whole plan succeeded.
+    """
     items = plan.all_items()
-    for idx, info in enumerate(items):
-        dest = plan.target_dir(info, games_dir, addons_dir, separate_update)
+    signature = plan_signature(plan)
+    dests = [plan.target_dir(i, games_dir, addons_dir, separate_update) for i in items]
+    journals = [journal_path(d, i) for d, i in zip(dests, items)]
+
+    states: list[Optional[JournalState]] = []
+    for jpath in journals:
+        state = read_journal(jpath) if resume else None
+        if state and state.signature != signature:
+            state = None
+        states.append(state)
+    # Only a leading run of finished PKGs is skipped: the interrupted run stopped after them.
+    skip_upto = 0
+    while skip_upto < len(items) and states[skip_upto] and states[skip_upto].complete:
+        skip_upto += 1
+
+    for idx, (info, dest, jpath) in enumerate(zip(items, dests, journals)):
         label = {"game": "Gioco base", "patch": "Aggiornamento", "dlc": "DLC"}[info.kind]
         ver = info.app_ver or info.version
         log(f"[{idx + 1}/{len(items)}] {label} {title_id_of(info)} v{ver}: "
             f"{os.path.basename(info.path)}")
         log(f"    -> {dest}")
+        if idx < skip_upto:
+            log("    già estratto nell'esecuzione interrotta: saltato")
+            if item_status:
+                item_status(idx, "skipped")
+            continue
 
         def cb(done: int, total: int, name: str, _i=idx) -> None:
             if progress:
                 progress(_i, len(items), done, total, name)
 
-        if item_status:
-            item_status(idx, "start")
         with PkgFile(info.path) as pkg:
-            if pkg.has_pfs:
-                pkg.extract(dest, cb, should_cancel)
-            else:
-                os.makedirs(dest, exist_ok=True)
-                pkg.extract_sce_sys(dest)
-                log("    (nessun file di gioco: solo licenza/metadati)")
+            if verify:
+                if item_status:
+                    item_status(idx, "verify")
+                results = pkg.verify(
+                    (lambda d, t, _i=idx: verify_progress(_i, d, t)) if verify_progress else None,
+                    should_cancel)
+                bad = [r.name for r in results if r.status == "mismatch"]
+                if bad:
+                    raise PkgError(
+                        f"{os.path.basename(info.path)} è danneggiato: le impronte SHA-256 "
+                        f"({', '.join(bad)}) non corrispondono. Scaricalo di nuovo.")
+                if all(r.status == "absent" for r in results):
+                    log("    verifica: il PKG non contiene impronte, non verificabile")
+                else:
+                    log("    verifica integrità: OK")
+            if item_status:
+                item_status(idx, "start")
+            state = states[idx]
+            partial = state is not None and not state.complete
+            journal = Journal(jpath, signature, keep=partial)
+            try:
+                if pkg.has_pfs:
+                    skipped = pkg.extract(dest, cb, should_cancel,
+                                          skip=state.done if partial else None,
+                                          on_file_done=journal.file_done)
+                    if skipped:
+                        log(f"    ripresa: {skipped / (1 << 30):.1f} GB già estratti, saltati")
+                else:
+                    os.makedirs(dest, exist_ok=True)
+                    pkg.extract_sce_sys(dest)
+                    log("    (nessun file di gioco: solo licenza/metadati)")
+                journal.complete()
+            finally:
+                journal.close()
         if item_status:
             item_status(idx, "done")
+
+    for jpath in journals:
+        try:
+            os.remove(jpath)
+        except OSError:
+            pass
+    if remove_pkg:
+        for info in items:
+            try:
+                remove_pkg(info.path)
+                log(f"Rimosso {os.path.basename(info.path)}")
+            except OSError as ex:
+                log(f"Impossibile rimuovere {os.path.basename(info.path)}: {ex}")
     log("Completato.")

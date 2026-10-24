@@ -22,15 +22,19 @@ class ExtractWorker(QThread):
     logged = Signal(str)
     progressed = Signal(int, object, object, str)  # index, done bytes, total bytes, file
     itemStatus = Signal(int, str)
+    verifyProgressed = Signal(int, object, object)  # index, done bytes, total bytes
     succeeded = Signal()
     failed = Signal(str)
 
-    def __init__(self, plan, games_dir, addons_dir, separate_update, parent=None):
+    def __init__(self, plan, games_dir, addons_dir, separate_update, verify=False,
+                 remove_pkg=None, parent=None):
         super().__init__(parent)
         self.plan = plan
         self.games_dir = games_dir
         self.addons_dir = addons_dir
         self.separate_update = separate_update
+        self.verify = verify
+        self.remove_pkg = remove_pkg
         self.cancel_event = threading.Event()
         self._last_emit = 0.0
 
@@ -44,15 +48,25 @@ class ExtractWorker(QThread):
         self._last_emit = now
         self.progressed.emit(idx, done, total, name)
 
+    def _verify_progress(self, idx, done, total):
+        now = time.monotonic()
+        if done != total and now - self._last_emit < 0.1:
+            return
+        self._last_emit = now
+        self.verifyProgressed.emit(idx, done, total)
+
     def run(self) -> None:
         try:
             installer.install(
                 self.plan, self.games_dir, self.addons_dir, self.separate_update,
                 log=self.logged.emit, progress=self._progress,
-                should_cancel=self.cancel_event.is_set, item_status=self.itemStatus.emit)
+                should_cancel=self.cancel_event.is_set, item_status=self.itemStatus.emit,
+                resume=True, verify=self.verify, verify_progress=self._verify_progress,
+                remove_pkg=self.remove_pkg)
             self.succeeded.emit()
         except Cancelled:
-            self.failed.emit("Operazione annullata. I file già estratti potrebbero essere incompleti.")
+            self.failed.emit("Operazione annullata. Avviando di nuovo l'estrazione con gli stessi "
+                             "PKG riprenderà da dove si è fermata.")
         except (PkgError, OSError) as ex:
             self.failed.emit(str(ex))
         except Exception as ex:  # keep the UI alive and tell the user
@@ -100,6 +114,18 @@ class QueueRow(SimpleCardWidget):
         self.ring.setValue(int(frac * 100))
         self.state.setText(f"{int(frac * 100)}%")
 
+    def set_verifying(self, frac: float) -> None:
+        self.icon.hide()
+        self.ring.show()
+        self.ring.setValue(int(frac * 100))
+        self.state.setText(f"Verifica {int(frac * 100)}%")
+
+    def set_skipped(self) -> None:
+        self.ring.hide()
+        self.icon.setIcon(InfoBarIcon.SUCCESS)
+        self.icon.show()
+        self.state.setText("Già estratto")
+
     def set_done(self) -> None:
         self.ring.hide()
         self.icon.setIcon(InfoBarIcon.SUCCESS)
@@ -115,6 +141,7 @@ class QueueRow(SimpleCardWidget):
 
 class ProgressPage(QWidget):
     cancelRequested = Signal()
+    fractionChanged = Signal(float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -214,9 +241,17 @@ class ProgressPage(QWidget):
     def _set_fraction(self, frac: float) -> None:
         self.percent.setText(f"{int(frac * 100)}%")
         self.bar.setValue(int(frac * 1000))
+        self.fractionChanged.emit(frac)
 
     def on_status(self, idx: int, state: str) -> None:
-        if state == "start":
+        if state == "verify":
+            self.current = idx
+            self.rows[idx].set_verifying(0.0)
+            self.fileLabel.setText("Verifica integrità del PKG…")
+        elif state == "skipped":
+            self.rows[idx].set_skipped()
+            self._update(idx, 1.0)
+        elif state == "start":
             self.current = idx
             self.base_bytes += self.item_bytes
             self.item_bytes = 0
@@ -224,6 +259,11 @@ class ProgressPage(QWidget):
         elif state == "done":
             self.rows[idx].set_done()
             self._update(idx, 1.0)
+
+    def on_verify(self, idx: int, done, total) -> None:
+        frac = done / total if total else 1.0
+        self.rows[idx].set_verifying(frac)
+        self.fileLabel.setText(f"Verifica integrità: {fmt_size(done)} / {fmt_size(total)}")
 
     def on_progress(self, idx: int, done, total, name: str) -> None:
         frac_item = done / total if total else 1.0
